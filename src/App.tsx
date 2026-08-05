@@ -9,15 +9,15 @@ import './App.css';
 
 const DEFAULT_SETTINGS: VisualizerSettings = {
   mode: 'chronological',
-  dotStyle: 'substates',
-  width: 820,
-  height: 180,
-  columns: 72,
-  rows: 13,
-  dotScale: 0.55,
+  dotStyle: 'binary',
+  width: 600,
+  height: 80,
+  columns: 128,
+  rows: 15,
+  dotScale: 0.65,
   activeColor: '#CF2617',
   inactiveColor: '#E2DCCF',
-  scrollMs: 90,
+  scrollMs: 50,
   rippleMs: 45,
   rippleFalloff: 0.88,
 };
