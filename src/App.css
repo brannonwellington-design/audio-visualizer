@@ -1,0 +1,156 @@
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+.stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 40px;
+  min-width: 0;
+}
+
+.stage header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.stage h1 {
+  font-size: 24px;
+  font-weight: 400;
+  margin: 0;
+  color: var(--content-primary);
+}
+
+.mic-button {
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--surface-tertiary);
+  background: var(--surface-inverse-primary);
+  color: var(--content-inverse-primary);
+  cursor: pointer;
+}
+
+.mic-button.listening {
+  background: var(--surface-negative-primary);
+  border-color: var(--surface-negative-primary);
+  color: #f9f4eb;
+}
+
+.canvas-frame {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--content-secondary);
+  margin: 0;
+}
+
+.error {
+  font-size: 13px;
+  color: var(--content-negative);
+  margin: 0;
+}
+
+/* --- Control panel --- */
+
+.panel {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--surface-secondary);
+  border-left: 1px solid var(--surface-tertiary);
+  padding: 24px 20px 40px;
+  overflow-y: auto;
+  max-height: 100vh;
+  position: sticky;
+  top: 0;
+}
+
+.panel section {
+  margin-bottom: 28px;
+}
+
+.panel h2 {
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: uppercase;
+  color: var(--content-secondary);
+  margin: 0 0 12px;
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.control-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--content-primary);
+}
+
+.control-value {
+  color: var(--content-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.control input[type='range'] {
+  width: 100%;
+  accent-color: var(--surface-brand-primary);
+}
+
+.control-color {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.control-color .control-label {
+  flex: 1;
+}
+
+.control-color input[type='color'] {
+  width: 36px;
+  height: 28px;
+  border: 1px solid var(--surface-tertiary);
+  border-radius: 6px;
+  background: none;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--surface-tertiary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  flex: 1;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 4px;
+  border: none;
+  background: var(--surface-primary);
+  color: var(--content-secondary);
+  cursor: pointer;
+}
+
+.segmented button.active {
+  background: var(--surface-brand-primary);
+  color: var(--content-brand-contrast);
+}

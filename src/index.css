@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
+
+:root {
+  /* Listen Labs paper theme, light mode */
+  --content-primary: #120f08;
+  --content-secondary: #6b6861;
+  --content-inverse-primary: #f9f4eb;
+  --content-brand: #0021cc;
+  --content-brand-contrast: #f9f4eb;
+  --content-negative: #b82214;
+  --surface-primary: #f9f4eb;
+  --surface-secondary: #eee8dd;
+  --surface-tertiary: #e2dccf;
+  --surface-inverse-primary: #120f08;
+  --surface-brand-primary: #0021cc;
+  --surface-negative-primary: #cf2617;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  background: var(--surface-primary);
+  color: var(--content-primary);
+  -webkit-font-smoothing: antialiased;
+}
