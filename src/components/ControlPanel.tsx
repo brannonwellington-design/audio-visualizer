@@ -185,7 +185,7 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
         <Slider
           label="Height"
           value={settings.height}
-          min={60}
+          min={48}
           max={600}
           step={10}
           format={(v) => `${v} px`}

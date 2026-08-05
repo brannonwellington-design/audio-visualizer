@@ -28,6 +28,30 @@
   color: var(--content-primary);
 }
 
+.button-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.secondary-button {
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--surface-tertiary);
+  background: var(--surface-secondary);
+  color: var(--content-primary);
+  cursor: pointer;
+}
+
+.secondary-button.paused {
+  background: var(--surface-brand-primary);
+  border-color: var(--surface-brand-primary);
+  color: var(--content-brand-contrast);
+}
+
 .mic-button {
   font: inherit;
   font-size: 14px;

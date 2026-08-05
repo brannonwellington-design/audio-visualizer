@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { SpeechAnalyzer, type AnalyzerParams } from './audio/speechAnalyzer';
 import {
   DotGridVisualizer,
+  type VisualizerExport,
   type VisualizerSettings,
 } from './components/DotGridVisualizer';
 import { ControlPanel } from './components/ControlPanel';
@@ -32,7 +33,18 @@ export default function App() {
   const [settings, setSettings] = useState<VisualizerSettings>(DEFAULT_SETTINGS);
   const [audio, setAudio] = useState<AnalyzerParams>({ ...analyzer.params });
   const [listening, setListening] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const exportRef = useRef<VisualizerExport | null>(null);
+  const copiedTimerRef = useRef<number | undefined>(undefined);
+
+  const copySVG = async () => {
+    await exportRef.current?.copySVG();
+    setCopied(true);
+    window.clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
+  };
 
   const patchSettings = useCallback((patch: Partial<VisualizerSettings>) => {
     setSettings((s) => ({ ...s, ...patch }));
@@ -70,20 +82,44 @@ export default function App() {
       <main className="stage">
         <header>
           <h1>Speech Dot Grid</h1>
-          <button className={`mic-button ${listening ? 'listening' : ''}`} onClick={toggleMic}>
-            {listening ? 'Stop microphone' : 'Start microphone'}
-          </button>
+          <div className="button-row">
+            <button className={`mic-button ${listening ? 'listening' : ''}`} onClick={toggleMic}>
+              {listening ? 'Stop microphone' : 'Start microphone'}
+            </button>
+            <button
+              className={`secondary-button ${paused ? 'paused' : ''}`}
+              onClick={() => setPaused((p) => !p)}
+            >
+              {paused ? 'Resume' : 'Pause'}
+            </button>
+            <button className="secondary-button" onClick={copySVG}>
+              {copied ? 'Copied' : 'Copy SVG'}
+            </button>
+            <button className="secondary-button" onClick={() => exportRef.current?.exportSVG()}>
+              Export SVG
+            </button>
+            <button className="secondary-button" onClick={() => exportRef.current?.exportPNG()}>
+              Export PNG
+            </button>
+          </div>
         </header>
         {error && <p className="error">{error}</p>}
         <div className="canvas-frame">
-          <DotGridVisualizer analyzer={analyzer} settings={settings} />
+          <DotGridVisualizer
+            analyzer={analyzer}
+            settings={settings}
+            paused={paused}
+            exportRef={exportRef}
+          />
         </div>
         <p className="hint">
-          {listening
-            ? settings.mode === 'chronological'
-              ? 'Speaking history scrolls right to left. New audio enters at the right edge.'
-              : 'Audio reacts in real time, rippling outward from the center of the grid.'
-            : 'Start the microphone to see the grid react to your voice.'}
+          {paused
+            ? 'Frozen. Adjust any setting to restyle this exact frame, then export it as SVG or PNG.'
+            : listening
+              ? settings.mode === 'chronological'
+                ? 'Speaking history scrolls right to left. New audio enters at the right edge.'
+                : 'Audio reacts in real time, rippling outward from the center of the grid.'
+              : 'Start the microphone to see the grid react to your voice.'}
         </p>
       </main>
       <ControlPanel
