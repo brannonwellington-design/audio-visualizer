@@ -18,6 +18,8 @@ const DEFAULT_SETTINGS: VisualizerSettings = {
   activeColor: '#CF2617',
   inactiveColor: '#E2DCCF',
   scrollMs: 50,
+  edgeTaper: true,
+  edgeTaperWidth: 0.05,
   rippleMs: 45,
   rippleFalloff: 0.88,
 };

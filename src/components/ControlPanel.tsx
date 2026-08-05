@@ -116,15 +116,37 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
           onChange={(dotStyle) => onSettings({ dotStyle })}
         />
         {settings.mode === 'chronological' ? (
-          <Slider
-            label="Scroll speed"
-            value={settings.scrollMs}
-            min={30}
-            max={300}
-            step={5}
-            format={(v) => `${v} ms/col`}
-            onChange={(scrollMs) => onSettings({ scrollMs })}
-          />
+          <>
+            <Slider
+              label="Scroll speed"
+              value={settings.scrollMs}
+              min={30}
+              max={300}
+              step={5}
+              format={(v) => `${v} ms/col`}
+              onChange={(scrollMs) => onSettings({ scrollMs })}
+            />
+            <Segmented
+              label="Edge taper"
+              value={settings.edgeTaper ? 'on' : 'off'}
+              options={[
+                { value: 'on', label: 'On' },
+                { value: 'off', label: 'Off' },
+              ]}
+              onChange={(v) => onSettings({ edgeTaper: v === 'on' })}
+            />
+            {settings.edgeTaper && (
+              <Slider
+                label="Taper width"
+                value={settings.edgeTaperWidth}
+                min={0.05}
+                max={0.5}
+                step={0.01}
+                format={(v) => `${Math.round(v * 100)}%`}
+                onChange={(edgeTaperWidth) => onSettings({ edgeTaperWidth })}
+              />
+            )}
+          </>
         ) : (
           <>
             <Slider

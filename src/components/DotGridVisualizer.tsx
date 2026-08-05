@@ -17,6 +17,10 @@ export interface VisualizerSettings {
   inactiveColor: string;
   /** Chronological mode: how many ms each column represents */
   scrollMs: number;
+  /** Chronological mode: taper columns down to the center line as they near the exit edge */
+  edgeTaper: boolean;
+  /** Chronological mode: portion of the grid width used for the taper (0..0.5) */
+  edgeTaperWidth: number;
   /** Static mode: ms for energy to propagate one column outward */
   rippleMs: number;
   /** Static mode: energy retained per column as it travels outward (0..1) */
@@ -94,6 +98,15 @@ export function DotGridVisualizer({ analyzer, settings }: Props) {
         // The rightmost (incoming) column always shows the live level so
         // the visual never feels a sample-interval behind the voice.
         values[cols - 1] = Math.max(values[cols - 1], level);
+        if (s.edgeTaper) {
+          // Ease columns back down to the center line as they approach the
+          // exit edge, so loud moments shrink away instead of popping off.
+          const taperCols = Math.max(1, Math.round(cols * s.edgeTaperWidth));
+          for (let c = 0; c < Math.min(taperCols, cols); c++) {
+            const p = c / taperCols;
+            values[c] *= p * p * (3 - 2 * p); // smoothstep
+          }
+        }
       } else {
         // Static mode: energy propagates outward from the center column
         // through a diffusion chain, creating the ripple.
