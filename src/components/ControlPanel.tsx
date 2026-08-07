@@ -1,5 +1,44 @@
+import { useEffect, useState } from 'react';
 import type { VisualizerSettings } from './DotGridVisualizer';
 import type { AnalyzerParams } from '../audio/speechAnalyzer';
+
+function NumberField({
+  value,
+  min,
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  onCommit: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+
+  const commit = () => {
+    const n = Math.round(Number(draft));
+    if (Number.isFinite(n) && n >= min) {
+      onCommit(n);
+    } else {
+      setDraft(String(value));
+    }
+  };
+
+  return (
+    <span className="number-field">
+      <input
+        type="number"
+        min={min}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+      />
+      px
+    </span>
+  );
+}
 
 interface Props {
   settings: VisualizerSettings;
@@ -15,6 +54,7 @@ function Slider({
   max,
   step = 1,
   format = (v: number) => String(v),
+  editable = false,
   onChange,
 }: {
   label: string;
@@ -23,13 +63,18 @@ function Slider({
   max: number;
   step?: number;
   format?: (v: number) => string;
+  editable?: boolean;
   onChange: (v: number) => void;
 }) {
   return (
     <label className="control">
       <span className="control-label">
         {label}
-        <span className="control-value">{format(value)}</span>
+        {editable ? (
+          <NumberField value={value} min={min} onCommit={onChange} />
+        ) : (
+          <span className="control-value">{format(value)}</span>
+        )}
       </span>
       <input
         type="range"
@@ -127,23 +172,53 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
               onChange={(scrollMs) => onSettings({ scrollMs })}
             />
             <Segmented
-              label="Edge taper"
-              value={settings.edgeTaper ? 'on' : 'off'}
+              label="Left taper"
+              value={settings.taperLeft ? 'on' : 'off'}
               options={[
                 { value: 'on', label: 'On' },
                 { value: 'off', label: 'Off' },
               ]}
-              onChange={(v) => onSettings({ edgeTaper: v === 'on' })}
+              onChange={(v) =>
+                onSettings({
+                  taperLeft: v === 'on',
+                  taperLeftWidth: settings.taperLeftWidth ?? 0.05,
+                })
+              }
             />
-            {settings.edgeTaper && (
+            {settings.taperLeft && (
               <Slider
-                label="Taper width"
-                value={settings.edgeTaperWidth}
-                min={0.05}
+                label="Left taper width"
+                value={settings.taperLeftWidth ?? 0.05}
+                min={0.01}
                 max={0.5}
                 step={0.01}
                 format={(v) => `${Math.round(v * 100)}%`}
-                onChange={(edgeTaperWidth) => onSettings({ edgeTaperWidth })}
+                onChange={(taperLeftWidth) => onSettings({ taperLeftWidth })}
+              />
+            )}
+            <Segmented
+              label="Right taper"
+              value={settings.taperRight ? 'on' : 'off'}
+              options={[
+                { value: 'on', label: 'On' },
+                { value: 'off', label: 'Off' },
+              ]}
+              onChange={(v) =>
+                onSettings({
+                  taperRight: v === 'on',
+                  taperRightWidth: settings.taperRightWidth ?? 0.05,
+                })
+              }
+            />
+            {settings.taperRight && (
+              <Slider
+                label="Right taper width"
+                value={settings.taperRightWidth ?? 0.05}
+                min={0.01}
+                max={0.5}
+                step={0.01}
+                format={(v) => `${Math.round(v * 100)}%`}
+                onChange={(taperRightWidth) => onSettings({ taperRightWidth })}
               />
             )}
           </>
@@ -179,16 +254,16 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
           min={240}
           max={1400}
           step={10}
-          format={(v) => `${v} px`}
+          editable
           onChange={(width) => onSettings({ width })}
         />
         <Slider
           label="Height"
           value={settings.height}
-          min={48}
+          min={32}
           max={600}
           step={10}
-          format={(v) => `${v} px`}
+          editable
           onChange={(height) => onSettings({ height })}
         />
         <Slider
@@ -244,9 +319,9 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
         <Slider
           label="Release"
           value={audio.releaseMs}
-          min={20}
+          min={1}
           max={600}
-          step={5}
+          step={1}
           format={(v) => `${v} ms`}
           onChange={(releaseMs) => onAudio({ releaseMs })}
         />

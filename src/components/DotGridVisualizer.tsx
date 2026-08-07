@@ -17,10 +17,14 @@ export interface VisualizerSettings {
   inactiveColor: string;
   /** Chronological mode: how many ms each column represents */
   scrollMs: number;
-  /** Chronological mode: taper columns down to the center line as they near the exit edge */
-  edgeTaper: boolean;
-  /** Chronological mode: portion of the grid width used for the taper (0..0.5) */
-  edgeTaperWidth: number;
+  /** Chronological mode: taper columns down to the center line as they near the left (exit) edge */
+  taperLeft: boolean;
+  /** Chronological mode: portion of the grid width used for the left taper (0..0.5) */
+  taperLeftWidth: number;
+  /** Chronological mode: taper incoming columns near the right (entry) edge */
+  taperRight: boolean;
+  /** Chronological mode: portion of the grid width used for the right taper (0..0.5) */
+  taperRightWidth: number;
   /** Static mode: ms for energy to propagate one column outward */
   rippleMs: number;
   /** Static mode: energy retained per column as it travels outward (0..1) */
@@ -189,15 +193,21 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
           // the visual never feels a sample-interval behind the voice.
           values[cols - 1] = Math.max(values[cols - 1], level);
         }
-        if (s.edgeTaper) {
-          // Ease columns back down to the center line as they approach the
-          // exit edge, so loud moments shrink away instead of popping off.
-          const taperCols = Math.max(1, Math.round(cols * s.edgeTaperWidth));
+        // Ease columns down to the center line near the edges: the exit
+        // (left) so loud moments shrink away instead of popping off, and
+        // the entry (right) so new audio grows in instead of appearing.
+        const smoothstep = (p: number) => p * p * (3 - 2 * p);
+        const applyEdgeTaper = (fromLeft: boolean, enabled: boolean | undefined, width: number | undefined) => {
+          if (!enabled) return;
+          const fraction = Number.isFinite(width) ? Math.min(0.5, Math.max(0, width as number)) : 0.05;
+          const taperCols = Math.max(1, Math.round(cols * fraction));
           for (let c = 0; c < Math.min(taperCols, cols); c++) {
-            const p = c / taperCols;
-            values[c] *= p * p * (3 - 2 * p); // smoothstep
+            const idx = fromLeft ? c : cols - 1 - c;
+            values[idx] *= smoothstep(c / taperCols);
           }
-        }
+        };
+        applyEdgeTaper(true, s.taperLeft, s.taperLeftWidth);
+        applyEdgeTaper(false, s.taperRight, s.taperRightWidth);
       } else {
         // Static mode: energy propagates outward from the center column
         // through a diffusion chain, creating the ripple.

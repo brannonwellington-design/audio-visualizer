@@ -34,7 +34,7 @@ const PEAK_DECAY_MS = 4000;
 const PEAK_FLOOR = 0.12;
 
 export class SpeechAnalyzer {
-  params: AnalyzerParams = { attackMs: 12, releaseMs: 140, gate: 0.05, gain: 1 };
+  params: AnalyzerParams = { attackMs: 1, releaseMs: 1, gate: 0.125, gain: 1 };
 
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SpeechAnalyzer, type AnalyzerParams } from './audio/speechAnalyzer';
 import {
   DotGridVisualizer,
@@ -6,38 +6,82 @@ import {
   type VisualizerSettings,
 } from './components/DotGridVisualizer';
 import { ControlPanel } from './components/ControlPanel';
+import { RecorderCard, type RecorderState } from './components/RecorderCard';
 import './App.css';
 
 const DEFAULT_SETTINGS: VisualizerSettings = {
   mode: 'chronological',
   dotStyle: 'binary',
   width: 600,
-  height: 80,
-  columns: 128,
-  rows: 15,
-  dotScale: 0.65,
+  height: 64,
+  columns: 140,
+  rows: 17,
+  dotScale: 0.75,
   activeColor: '#CF2617',
-  inactiveColor: '#E2DCCF',
-  scrollMs: 50,
-  edgeTaper: true,
-  edgeTaperWidth: 0.05,
-  rippleMs: 45,
-  rippleFalloff: 0.88,
+  inactiveColor: '#EEE8DD',
+  scrollMs: 30,
+  taperLeft: true,
+  taperLeftWidth: 0.05,
+  taperRight: true,
+  taperRightWidth: 0.05,
+  rippleMs: 10,
+  rippleFalloff: 0.98,
 };
+
+/** Center line color when the recorder is idle, matching the product's resting state */
+const IDLE_LINE_COLOR = '#A9A69C';
+/** Waveform color while paused */
+const PAUSED_WAVE_COLOR = '#120F08';
 
 export default function App() {
   const analyzerRef = useRef<SpeechAnalyzer | null>(null);
   if (!analyzerRef.current) analyzerRef.current = new SpeechAnalyzer();
   const analyzer = analyzerRef.current;
 
-  const [settings, setSettings] = useState<VisualizerSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<VisualizerSettings>(() => ({ ...DEFAULT_SETTINGS }));
   const [audio, setAudio] = useState<AnalyzerParams>({ ...analyzer.params });
-  const [listening, setListening] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [recState, setRecState] = useState<RecorderState>('idle');
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const exportRef = useRef<VisualizerExport | null>(null);
   const copiedTimerRef = useRef<number | undefined>(undefined);
+  /** Recording time accumulated before the most recent resume */
+  const accumulatedRef = useRef(0);
+  const segmentStartRef = useRef(0);
+
+  useEffect(() => {
+    if (recState !== 'recording') return;
+    const tick = window.setInterval(() => {
+      setElapsedMs(accumulatedRef.current + (performance.now() - segmentStartRef.current));
+    }, 200);
+    return () => window.clearInterval(tick);
+  }, [recState]);
+
+  const record = async () => {
+    setError(null);
+    try {
+      await analyzer.start();
+      analyzer.params = audio;
+      accumulatedRef.current = 0;
+      segmentStartRef.current = performance.now();
+      setElapsedMs(0);
+      setRecState('recording');
+    } catch {
+      setError('Microphone access was denied. Allow mic access and try again.');
+    }
+  };
+
+  const pause = () => {
+    accumulatedRef.current += performance.now() - segmentStartRef.current;
+    setElapsedMs(accumulatedRef.current);
+    setRecState('paused');
+  };
+
+  const resume = () => {
+    segmentStartRef.current = performance.now();
+    setRecState('recording');
+  };
 
   const copySVG = async () => {
     await exportRef.current?.copySVG();
@@ -61,20 +105,16 @@ export default function App() {
     [analyzer],
   );
 
-  const toggleMic = async () => {
-    setError(null);
-    if (listening) {
-      analyzer.stop();
-      setListening(false);
-      return;
-    }
-    try {
-      await analyzer.start();
-      analyzer.params = audio;
-      setListening(true);
-    } catch {
-      setError('Microphone access was denied. Allow mic access and try again.');
-    }
+  // The card overrides the waveform color by state: muted center line when
+  // idle, the configured active color while recording, dark when paused.
+  const displaySettings: VisualizerSettings = {
+    ...settings,
+    activeColor:
+      recState === 'idle'
+        ? IDLE_LINE_COLOR
+        : recState === 'paused'
+          ? PAUSED_WAVE_COLOR
+          : settings.activeColor,
   };
 
   return (
@@ -82,45 +122,35 @@ export default function App() {
       <main className="stage">
         <header>
           <h1>Speech Dot Grid</h1>
-          <div className="button-row">
-            <button className={`mic-button ${listening ? 'listening' : ''}`} onClick={toggleMic}>
-              {listening ? 'Stop microphone' : 'Start microphone'}
-            </button>
-            <button
-              className={`secondary-button ${paused ? 'paused' : ''}`}
-              onClick={() => setPaused((p) => !p)}
-            >
-              {paused ? 'Resume' : 'Pause'}
-            </button>
-            <button className="secondary-button" onClick={copySVG}>
-              {copied ? 'Copied' : 'Copy SVG'}
-            </button>
-            <button className="secondary-button" onClick={() => exportRef.current?.exportSVG()}>
-              Export SVG
-            </button>
-            <button className="secondary-button" onClick={() => exportRef.current?.exportPNG()}>
-              Export PNG
-            </button>
-          </div>
         </header>
         {error && <p className="error">{error}</p>}
-        <div className="canvas-frame">
-          <DotGridVisualizer
-            analyzer={analyzer}
-            settings={settings}
-            paused={paused}
-            exportRef={exportRef}
-          />
+        <div className="product-stage">
+          <RecorderCard
+            state={recState}
+            elapsedMs={elapsedMs}
+            onRecord={record}
+            onPause={pause}
+            onResume={resume}
+          >
+            <DotGridVisualizer
+              analyzer={analyzer}
+              settings={displaySettings}
+              paused={recState !== 'recording'}
+              exportRef={exportRef}
+            />
+          </RecorderCard>
         </div>
-        <p className="hint">
-          {paused
-            ? 'Frozen. Adjust any setting to restyle this exact frame, then export it as SVG or PNG.'
-            : listening
-              ? settings.mode === 'chronological'
-                ? 'Speaking history scrolls right to left. New audio enters at the right edge.'
-                : 'Audio reacts in real time, rippling outward from the center of the grid.'
-              : 'Start the microphone to see the grid react to your voice.'}
-        </p>
+        <div className="button-row">
+          <button className="secondary-button" onClick={copySVG}>
+            {copied ? 'Copied' : 'Copy SVG'}
+          </button>
+          <button className="secondary-button" onClick={() => exportRef.current?.exportSVG()}>
+            Export SVG
+          </button>
+          <button className="secondary-button" onClick={() => exportRef.current?.exportPNG()}>
+            Export PNG
+          </button>
+        </div>
       </main>
       <ControlPanel
         settings={settings}
