@@ -7,7 +7,24 @@ import {
 } from './components/DotGridVisualizer';
 import { ControlPanel } from './components/ControlPanel';
 import { RecorderCard, type RecorderState } from './components/RecorderCard';
+import { SettingsDrawer } from './components/SettingsDrawer';
 import './App.css';
+
+function GearIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M8.6 2.5h2.8l.4 1.9c.5.2 1 .4 1.4.8l1.85-.6 1.4 2.4-1.45 1.3c.05.23.07.47.07.7s-.02.47-.07.7l1.45 1.3-1.4 2.4-1.85-.6c-.4.34-.9.6-1.4.8l-.4 1.9H8.6l-.4-1.9c-.5-.2-1-.46-1.4-.8l-1.85.6-1.4-2.4L5 9.7A4.5 4.5 0 0 1 4.93 9c0-.23.02-.47.07-.7L3.55 7l1.4-2.4 1.85.6c.4-.34.9-.6 1.4-.8l.4-1.9z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+        transform="translate(0 1)"
+      />
+      <circle cx="10" cy="10" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
 
 const DEFAULT_SETTINGS: VisualizerSettings = {
   mode: 'chronological',
@@ -41,6 +58,7 @@ export default function App() {
   const [settings, setSettings] = useState<VisualizerSettings>(() => ({ ...DEFAULT_SETTINGS }));
   const [audio, setAudio] = useState<AnalyzerParams>({ ...analyzer.params });
   const [recState, setRecState] = useState<RecorderState>('idle');
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,8 +135,25 @@ export default function App() {
           : settings.activeColor,
   };
 
+  const panel = (
+    <ControlPanel
+      settings={settings}
+      onSettings={patchSettings}
+      audio={audio}
+      onAudio={patchAudio}
+    />
+  );
+
   return (
     <div className="app">
+      <button
+        className="settings-fab"
+        aria-label="Settings"
+        aria-expanded={drawerOpen}
+        onClick={() => setDrawerOpen((o) => !o)}
+      >
+        <GearIcon />
+      </button>
       <main className="stage">
         <header>
           <h1>Speech Dot Grid</h1>
@@ -152,12 +187,10 @@ export default function App() {
           </button>
         </div>
       </main>
-      <ControlPanel
-        settings={settings}
-        onSettings={patchSettings}
-        audio={audio}
-        onAudio={patchAudio}
-      />
+      {panel}
+      <SettingsDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+        {panel}
+      </SettingsDrawer>
     </div>
   );
 }

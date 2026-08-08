@@ -285,10 +285,19 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
     };
   }, [exportRef]);
 
+  // The canvas keeps rendering (and exporting) at the configured pixel
+  // size, but its on-screen size shrinks with the viewport when the
+  // container is narrower than the configured width.
   return (
     <canvas
       ref={canvasRef}
-      style={{ width: settings.width, height: settings.height, display: 'block' }}
+      style={{
+        width: '100%',
+        maxWidth: settings.width,
+        height: 'auto',
+        aspectRatio: `${settings.width} / ${settings.height}`,
+        display: 'block',
+      }}
     />
   );
 }
