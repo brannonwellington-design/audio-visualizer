@@ -62,13 +62,14 @@
 /* --- Product recorder card --- */
 
 .product-stage {
+  width: 100%;
   max-width: 100%;
-  overflow: auto;
   display: flex;
   justify-content: center;
 }
 
 .recorder-card {
+  max-width: 100%;
   background: var(--surface-secondary);
   border: 1px solid var(--surface-tertiary);
   border-radius: 16px;
@@ -83,6 +84,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
 }
 
 .recorder-controls {
@@ -304,4 +306,154 @@
 .segmented button.active {
   background: var(--surface-brand-primary);
   color: var(--content-brand-contrast);
+}
+
+/* --- Mobile settings drawer --- */
+
+.settings-fab {
+  display: none;
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 40;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--surface-tertiary);
+  background: var(--surface-secondary);
+  color: var(--content-primary);
+  cursor: pointer;
+}
+
+.settings-fab:active {
+  transform: scale(0.94);
+}
+
+.drawer-layer {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  visibility: hidden;
+  /* Keep the drawer visible until its slide-out transition finishes */
+  transition: visibility 0s 0.28s;
+}
+
+.drawer-layer.open {
+  pointer-events: auto;
+  visibility: visible;
+  transition: visibility 0s;
+}
+
+/* Transparent on purpose: the visualizer must stay fully visible while
+   settings are adjusted. Tapping outside the sheet still closes it. */
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+}
+
+.drawer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 50vh;
+  height: 50dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-primary);
+  border-top: 1px solid var(--surface-tertiary);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 24px rgba(18, 15, 8, 0.12);
+  transform: translateY(100%);
+  transition: transform 0.28s ease;
+}
+
+.drawer-layer.open .drawer {
+  transform: translateY(0);
+}
+
+.drawer-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 12px 8px;
+  flex-shrink: 0;
+  touch-action: none;
+}
+
+.drawer-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-tertiary);
+}
+
+.drawer-close {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--content-secondary);
+  cursor: pointer;
+}
+
+.drawer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.drawer-body .panel {
+  width: 100%;
+  max-height: none;
+  position: static;
+  border-left: none;
+  background: none;
+  padding: 4px 20px calc(32px + env(safe-area-inset-bottom));
+}
+
+/* --- Mobile layout --- */
+
+@media (max-width: 768px) {
+  /* The sidebar collapses into the gear button + drawer */
+  .app > .panel {
+    display: none;
+  }
+
+  .settings-fab {
+    display: inline-flex;
+  }
+
+  .drawer-layer {
+    display: block;
+  }
+
+  .stage {
+    justify-content: flex-start;
+    gap: 16px;
+    padding: 16px;
+    padding-top: 20px;
+  }
+
+  /* Keep the card at the top of the page so the visualizer stays
+     visible above the open drawer */
+  .stage header {
+    margin-bottom: 0;
+  }
+
+  .stage h1 {
+    font-size: 20px;
+  }
 }
