@@ -36,6 +36,16 @@ const PEAK_FLOOR = 0.12;
 /** Frequency range shown by spectrum mode (voice fundamentals through sibilance) */
 const SPECTRUM_LOW_HZ = 80;
 const SPECTRUM_HIGH_HZ = 6000;
+/**
+ * Spectrum bands redraw the whole grid every frame, so they need slower
+ * envelopes than the single scrolling level or the display flickers.
+ * These floors keep spectrum mode calm even with snappy Feel settings.
+ */
+const BAND_MIN_ATTACK_MS = 50;
+const BAND_MIN_RELEASE_MS = 300;
+/** Soft-knee exponent + headroom so only true peaks reach full height */
+const BAND_CURVE = 1.35;
+const BAND_HEADROOM = 0.88;
 
 export class SpeechAnalyzer {
   params: AnalyzerParams = { attackMs: 1, releaseMs: 1, gate: 0.125, gain: 1 };
@@ -149,15 +159,30 @@ export class SpeechAnalyzer {
       for (let i = i0; i <= i1; i++) sum += this.freqData[i] / 255;
       let raw = sum / (i1 - i0 + 1);
 
-      // Same gate + adaptive-peak normalization as the overall level
+      // Same gate + adaptive-peak normalization as the overall level,
+      // then a soft-knee curve so mid bands sit low and only real peaks
+      // reach the top of the grid.
       raw = raw < gate ? 0 : (raw - gate) / (1 - gate);
       const normalized = Math.min(1, (raw / this.peak) * gain);
+      const shaped = Math.pow(normalized, BAND_CURVE) * BAND_HEADROOM;
 
-      const tau = normalized > this.bandEnv[b] ? attackMs : releaseMs;
-      const coef = 1 - Math.exp(-dt / Math.max(1, tau));
-      this.bandEnv[b] += (normalized - this.bandEnv[b]) * coef;
+      const tau =
+        shaped > this.bandEnv[b]
+          ? Math.max(attackMs, BAND_MIN_ATTACK_MS)
+          : Math.max(releaseMs, BAND_MIN_RELEASE_MS);
+      const coef = 1 - Math.exp(-dt / tau);
+      this.bandEnv[b] += (shaped - this.bandEnv[b]) * coef;
       if (this.bandEnv[b] < 0.001) this.bandEnv[b] = 0;
     }
-    return this.bandEnv.slice();
+
+    // Spatial smoothing: blend neighboring bands so the spectrum reads as
+    // smooth hills rather than a jagged comb.
+    const out = this.bandEnv.slice();
+    for (let b = 0; b < bands; b++) {
+      const prev = this.bandEnv[Math.max(0, b - 1)];
+      const next = this.bandEnv[Math.min(bands - 1, b + 1)];
+      out[b] = prev * 0.25 + this.bandEnv[b] * 0.5 + next * 0.25;
+    }
+    return out;
   }
 }
