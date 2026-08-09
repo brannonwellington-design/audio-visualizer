@@ -1,6 +1,33 @@
 import { useEffect, useState } from 'react';
-import type { VisualizerSettings } from './DotGridVisualizer';
+import type { VisualizerMode, VisualizerSettings } from './DotGridVisualizer';
 import type { AnalyzerParams } from '../audio/speechAnalyzer';
+
+const MODES: { value: VisualizerMode; label: string }[] = [
+  { value: 'chronological', label: 'Chronological' },
+  { value: 'centerOut', label: 'Center-out' },
+  { value: 'seismograph', label: 'Seismograph' },
+  { value: 'peakHold', label: 'Peak hold' },
+  { value: 'spectrum', label: 'Spectrum' },
+  { value: 'static', label: 'Static' },
+  { value: 'string', label: 'String' },
+  { value: 'heatmap', label: 'Heatmap' },
+  { value: 'typewriter', label: 'Typewriter' },
+  { value: 'hourglass', label: 'Hourglass' },
+  { value: 'constellation', label: 'Constellation' },
+  { value: 'radial', label: 'Radial' },
+  { value: 'swarm', label: 'Swarm' },
+];
+
+/** Modes whose pace is set by the scrollMs step interval, with slider labels */
+const SPEED_CONTROL: Partial<Record<VisualizerMode, { label: string; unit: string }>> = {
+  chronological: { label: 'Scroll speed', unit: 'ms/col' },
+  centerOut: { label: 'Scroll speed', unit: 'ms/col' },
+  seismograph: { label: 'Sweep speed', unit: 'ms/col' },
+  peakHold: { label: 'Scroll speed', unit: 'ms/col' },
+  heatmap: { label: 'Sweep speed', unit: 'ms/col' },
+  typewriter: { label: 'Type speed', unit: 'ms/cell' },
+  radial: { label: 'Sweep speed', unit: 'ms/spoke' },
+};
 
 function NumberField({
   value,
@@ -138,19 +165,25 @@ function Segmented<T extends string>({
 }
 
 export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
+  const speed = SPEED_CONTROL[settings.mode];
   return (
     <aside className="panel">
       <section>
         <h2>Mode</h2>
-        <Segmented
-          label="View"
-          value={settings.mode}
-          options={[
-            { value: 'chronological', label: 'Chronological' },
-            { value: 'static', label: 'Static' },
-          ]}
-          onChange={(mode) => onSettings({ mode })}
-        />
+        <div className="control">
+          <span className="control-label">View</span>
+          <div className="mode-grid">
+            {MODES.map((m) => (
+              <button
+                key={m.value}
+                className={m.value === settings.mode ? 'active' : ''}
+                onClick={() => onSettings({ mode: m.value })}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <Segmented
           label="Dot style"
           value={settings.dotStyle}
@@ -160,17 +193,19 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
           ]}
           onChange={(dotStyle) => onSettings({ dotStyle })}
         />
-        {settings.mode === 'chronological' ? (
+        {speed && (
+          <Slider
+            label={speed.label}
+            value={settings.scrollMs}
+            min={30}
+            max={300}
+            step={5}
+            format={(v) => `${v} ${speed.unit}`}
+            onChange={(scrollMs) => onSettings({ scrollMs })}
+          />
+        )}
+        {settings.mode === 'chronological' && (
           <>
-            <Slider
-              label="Scroll speed"
-              value={settings.scrollMs}
-              min={30}
-              max={300}
-              step={5}
-              format={(v) => `${v} ms/col`}
-              onChange={(scrollMs) => onSettings({ scrollMs })}
-            />
             <Segmented
               label="Left taper"
               value={settings.taperLeft ? 'on' : 'off'}
@@ -222,7 +257,8 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
               />
             )}
           </>
-        ) : (
+        )}
+        {settings.mode === 'static' && (
           <>
             <Slider
               label="Ripple speed"
@@ -235,6 +271,28 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
             />
             <Slider
               label="Ripple falloff"
+              value={settings.rippleFalloff}
+              min={0.5}
+              max={1}
+              step={0.01}
+              format={(v) => v.toFixed(2)}
+              onChange={(rippleFalloff) => onSettings({ rippleFalloff })}
+            />
+          </>
+        )}
+        {settings.mode === 'string' && (
+          <>
+            <Slider
+              label="Wave speed"
+              value={settings.rippleMs}
+              min={10}
+              max={200}
+              step={5}
+              format={(v) => `${v} ms/col`}
+              onChange={(rippleMs) => onSettings({ rippleMs })}
+            />
+            <Slider
+              label="Sustain"
               value={settings.rippleFalloff}
               min={0.5}
               max={1}
