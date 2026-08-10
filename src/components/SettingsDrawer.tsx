@@ -67,7 +67,7 @@ export function SettingsDrawer({ open, onClose, children }: Props) {
   };
 
   return (
-    <div className={`drawer-layer ${open ? 'open' : ''}`} aria-hidden={!open}>
+    <div className={`drawer-layer ${open ? 'open' : ''}`} aria-hidden={!open} inert={!open}>
       <div className="drawer-scrim" onClick={onClose} />
       <div className="drawer" ref={drawerRef} role="dialog" aria-label="Settings">
         <div

@@ -308,6 +308,29 @@
   color: var(--content-brand-contrast);
 }
 
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.mode-grid button {
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 4px;
+  border: 1px solid var(--surface-tertiary);
+  border-radius: 8px;
+  background: var(--surface-primary);
+  color: var(--content-secondary);
+  cursor: pointer;
+}
+
+.mode-grid button.active {
+  background: var(--surface-brand-primary);
+  border-color: var(--surface-brand-primary);
+  color: var(--content-brand-contrast);
+}
+
 /* --- Mobile settings drawer --- */
 
 .settings-fab {

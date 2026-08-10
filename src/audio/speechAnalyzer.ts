@@ -33,6 +33,20 @@ const PEAK_DECAY_MS = 4000;
 /** Adaptive peak never drops below this, so noise can't get boosted to full scale */
 const PEAK_FLOOR = 0.12;
 
+/** Frequency range shown by spectrum mode (voice fundamentals through sibilance) */
+const SPECTRUM_LOW_HZ = 80;
+const SPECTRUM_HIGH_HZ = 6000;
+/**
+ * Spectrum bands redraw the whole grid every frame, so they need slower
+ * envelopes than the single scrolling level or the display flickers.
+ * These floors keep spectrum mode calm even with snappy Feel settings.
+ */
+const BAND_MIN_ATTACK_MS = 50;
+const BAND_MIN_RELEASE_MS = 300;
+/** Soft-knee exponent + headroom so only true peaks reach full height */
+const BAND_CURVE = 1.35;
+const BAND_HEADROOM = 0.88;
+
 export class SpeechAnalyzer {
   params: AnalyzerParams = { attackMs: 1, releaseMs: 1, gate: 0.125, gain: 1 };
 
@@ -43,6 +57,8 @@ export class SpeechAnalyzer {
   private envelope = 0;
   private peak = PEAK_FLOOR;
   private lastTime = 0;
+  private bandEnv: number[] = [];
+  private bandsLastTime = 0;
 
   get running(): boolean {
     return this.analyser !== null;
@@ -110,5 +126,63 @@ export class SpeechAnalyzer {
     this.envelope += (normalized - this.envelope) * coef;
     if (this.envelope < 0.001) this.envelope = 0;
     return this.envelope;
+  }
+
+  /**
+   * Per-band spectrum for the given number of bands, 0..1 each, log-spaced
+   * across the voice range. Bands share the level pipeline's adaptive peak
+   * so the overall scale matches, and get the same asymmetric attack/release
+   * envelope so the Feel controls apply here too.
+   */
+  getSpectrum(bands: number, now: number): number[] {
+    if (this.bandEnv.length !== bands) {
+      this.bandEnv = new Array(bands).fill(0);
+      this.bandsLastTime = now;
+    }
+    if (!this.analyser || !this.ctx) return this.bandEnv.slice();
+
+    const dt = Math.min(100, Math.max(0.01, now - this.bandsLastTime));
+    this.bandsLastTime = now;
+    this.analyser.getByteFrequencyData(this.freqData);
+
+    const { gate, gain, attackMs, releaseMs } = this.params;
+    const binHz = this.ctx.sampleRate / this.analyser.fftSize;
+    const high = Math.min(SPECTRUM_HIGH_HZ, this.ctx.sampleRate / 2);
+    const ratio = high / SPECTRUM_LOW_HZ;
+
+    for (let b = 0; b < bands; b++) {
+      const f0 = SPECTRUM_LOW_HZ * Math.pow(ratio, b / bands);
+      const f1 = SPECTRUM_LOW_HZ * Math.pow(ratio, (b + 1) / bands);
+      const i0 = Math.max(1, Math.floor(f0 / binHz));
+      const i1 = Math.min(this.freqData.length - 1, Math.max(i0, Math.ceil(f1 / binHz) - 1));
+      let sum = 0;
+      for (let i = i0; i <= i1; i++) sum += this.freqData[i] / 255;
+      let raw = sum / (i1 - i0 + 1);
+
+      // Same gate + adaptive-peak normalization as the overall level,
+      // then a soft-knee curve so mid bands sit low and only real peaks
+      // reach the top of the grid.
+      raw = raw < gate ? 0 : (raw - gate) / (1 - gate);
+      const normalized = Math.min(1, (raw / this.peak) * gain);
+      const shaped = Math.pow(normalized, BAND_CURVE) * BAND_HEADROOM;
+
+      const tau =
+        shaped > this.bandEnv[b]
+          ? Math.max(attackMs, BAND_MIN_ATTACK_MS)
+          : Math.max(releaseMs, BAND_MIN_RELEASE_MS);
+      const coef = 1 - Math.exp(-dt / tau);
+      this.bandEnv[b] += (shaped - this.bandEnv[b]) * coef;
+      if (this.bandEnv[b] < 0.001) this.bandEnv[b] = 0;
+    }
+
+    // Spatial smoothing: blend neighboring bands so the spectrum reads as
+    // smooth hills rather than a jagged comb.
+    const out = this.bandEnv.slice();
+    for (let b = 0; b < bands; b++) {
+      const prev = this.bandEnv[Math.max(0, b - 1)];
+      const next = this.bandEnv[Math.min(bands - 1, b + 1)];
+      out[b] = prev * 0.25 + this.bandEnv[b] * 0.5 + next * 0.25;
+    }
+    return out;
   }
 }
