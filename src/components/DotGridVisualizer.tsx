@@ -5,16 +5,10 @@ export type VisualizerMode =
   | 'chronological'
   | 'centerOut'
   | 'seismograph'
-  | 'peakHold'
   | 'spectrum'
   | 'static'
   | 'string'
-  | 'heatmap'
-  | 'typewriter'
-  | 'hourglass'
-  | 'constellation'
-  | 'radial'
-  | 'swarm';
+  | 'radial';
 export type DotStyle = 'substates' | 'binary';
 
 export interface VisualizerSettings {
@@ -67,24 +61,6 @@ interface Dot {
   active: boolean;
 }
 
-/** Peak-hold ghost tick decay time constant (ms) */
-const PEAK_DECAY_MS = 1500;
-/** Heatmap: heat gained per ms while a cell is under the sweep and active */
-const HEAT_GAIN_PER_MS = 0.008;
-/** Heatmap: cooling time constant (ms) */
-const HEAT_COOL_MS = 15000;
-/** Constellation: star fade time constant (ms) */
-const STAR_FADE_MS = 45000;
-/** Constellation: stars spawned per ms at full level */
-const STAR_RATE_PER_MS = 0.006;
-/** Hourglass: grains emitted per ms at full level */
-const GRAIN_RATE_PER_MS = 0.02;
-/** Hourglass: fall speed in rows per second */
-const GRAIN_FALL_ROWS_PER_S = 26;
-/** Swarm: spring stiffness (1/s^2) and damping (1/s) toward the rest position */
-const SWARM_SPRING = 36;
-const SWARM_DAMPING = 9;
-
 interface Geometry {
   cols: number;
   rows: number;
@@ -110,56 +86,26 @@ function geometry(s: VisualizerSettings, w: number, h: number): Geometry {
 
 /**
  * One value per column, dots activate outward from the center line.
- * Shared by every column-based mode. `peaks` optionally lights a lingering
- * ghost tick at each column's held peak row.
+ * Shared by every column-based mode.
  */
-function columnDots(
-  values: number[],
-  s: VisualizerSettings,
-  w: number,
-  h: number,
-  peaks?: number[],
-): Dot[] {
+function columnDots(values: number[], s: VisualizerSettings, w: number, h: number): Dot[] {
   const g = geometry(s, w, h);
   const dots: Dot[] = [];
   for (let c = 0; c < g.cols; c++) {
     const v = values[c] ?? 0;
     const x = (c + 0.5) * g.cellW;
-    const peakDist = peaks && peaks[c] > 0.03 ? Math.round(peaks[c] * g.maxRowDist) : -1;
     for (let r = 0; r < g.rows; r++) {
       let dist = Math.abs(r - g.centerRow);
       if (g.rows % 2 === 0) dist = Math.max(0, dist - 0.5);
       const threshold = dist / g.maxRowDist;
-      let active = v >= threshold && (threshold === 0 || v > 0);
+      const active = v >= threshold && (threshold === 0 || v > 0);
       let rad = g.radius;
       if (active && s.dotStyle === 'substates' && threshold > 0) {
         // Frontier dot eases in as the level crosses its threshold
         const partial = Math.min(1, (v - threshold) / g.rowStep);
         rad = g.radius * (0.35 + 0.65 * partial);
       }
-      if (peakDist >= 1 && Math.abs(dist - peakDist) < 0.3) {
-        active = true;
-        rad = g.radius;
-      }
       dots.push({ x, y: (r + 0.5) * g.cellH, r: rad, active });
-    }
-  }
-  return dots;
-}
-
-/** One intensity per cell (indexed row * cols + col), for the grid-state modes. */
-function cellDots(cells: Float32Array, s: VisualizerSettings, w: number, h: number): Dot[] {
-  const g = geometry(s, w, h);
-  const dots: Dot[] = [];
-  for (let r = 0; r < g.rows; r++) {
-    for (let c = 0; c < g.cols; c++) {
-      const v = cells[r * g.cols + c];
-      const active = v > 0.03;
-      let rad = g.radius;
-      if (active && s.dotStyle === 'substates') {
-        rad = g.radius * (0.35 + 0.65 * Math.min(1, v));
-      }
-      dots.push({ x: (c + 0.5) * g.cellW, y: (r + 0.5) * g.cellH, r: rad, active });
     }
   }
   return dots;
@@ -237,25 +183,13 @@ interface EngineState {
   maxSinceStep: number;
   /** Column history for scroll modes, persistent trace for sweep modes */
   values: number[];
-  /** Peak-hold ghost levels per column */
-  peaks: number[];
   /** Static mode diffusion chain */
   trail: number[];
-  /** Sweep/typewriter write position */
+  /** Sweep write position */
   playhead: number;
-  /** Per-cell intensities for grid modes (row * cols + col) */
-  cells: Float32Array;
-  cellCount: number;
   /** String displacement and velocity per column */
   stringU: Float32Array;
   stringV: Float32Array;
-  /** Hourglass pile height per column and in-flight grains */
-  heights: Int16Array;
-  grains: { c: number; r: number }[];
-  /** Fractional spawn budget for hourglass / constellation */
-  budget: number;
-  /** Swarm agent state: x, y, vx, vy per agent */
-  agents: Float32Array;
 }
 
 function freshState(mode: VisualizerMode): EngineState {
@@ -264,17 +198,10 @@ function freshState(mode: VisualizerMode): EngineState {
     stepAccum: 0,
     maxSinceStep: 0,
     values: [],
-    peaks: [],
     trail: [],
     playhead: 0,
-    cells: new Float32Array(0),
-    cellCount: -1,
     stringU: new Float32Array(0),
     stringV: new Float32Array(0),
-    heights: new Int16Array(0),
-    grains: [],
-    budget: 0,
-    agents: new Float32Array(0),
   };
 }
 
@@ -283,14 +210,6 @@ function resizeColumns(arr: number[], cols: number): number[] {
   if (arr.length === cols) return arr;
   const keep = arr.slice(-cols);
   return new Array(cols - keep.length).fill(0).concat(keep);
-}
-
-function ensureCells(st: EngineState, count: number) {
-  if (st.cellCount !== count) {
-    st.cells = new Float32Array(count);
-    st.cellCount = count;
-    st.playhead = 0;
-  }
 }
 
 /** Advance the shared step accumulator, invoking `step` once per elapsed period. */
@@ -355,9 +274,7 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
       }
 
       const level = frozen ? 0 : analyzer.getLevel(now);
-      const g = geometry(s, w, h);
-      const cols = g.cols;
-      const rows = g.rows;
+      const cols = Math.max(1, s.columns);
       const dtS = dt / 1000;
 
       let dots: Dot[];
@@ -443,31 +360,6 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
           break;
         }
 
-        case 'peakHold': {
-          // Chronological scroll plus a slowly-decaying held peak per column,
-          // drawn as a lingering ghost tick above the wave.
-          st.values = resizeColumns(st.values, cols);
-          st.peaks = resizeColumns(st.peaks, cols);
-          if (!frozen) {
-            runSteps(st, dt, s.scrollMs, level, () => {
-              st.values.push(st.maxSinceStep);
-              st.values.shift();
-              st.peaks.push(st.maxSinceStep);
-              st.peaks.shift();
-            });
-          }
-          const values = st.values.slice();
-          if (!frozen) {
-            values[cols - 1] = Math.max(values[cols - 1], level);
-            const decay = Math.exp(-dt / PEAK_DECAY_MS);
-            for (let c = 0; c < cols; c++) {
-              st.peaks[c] = Math.max(st.peaks[c] * decay, values[c]);
-            }
-          }
-          dots = columnDots(values, s, w, h, st.peaks);
-          break;
-        }
-
         case 'spectrum': {
           // Columns are log-spaced frequency bands, low on the left.
           const values = frozen ? new Array(cols).fill(0) : analyzer.getSpectrum(cols, now);
@@ -542,130 +434,6 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
           break;
         }
 
-        case 'heatmap': {
-          // A sweeping playhead deposits heat wherever the voice would light
-          // dots; heat cools slowly, leaving a long-exposure of the take.
-          ensureCells(st, cols * rows);
-          if (!frozen) {
-            st.playhead = st.playhead % cols;
-            runSteps(st, dt, s.scrollMs, level, () => {
-              st.playhead = (st.playhead + 1) % cols;
-            });
-            if (level > 0.02) {
-              const c = st.playhead;
-              for (let r = 0; r < rows; r++) {
-                let dist = Math.abs(r - g.centerRow);
-                if (rows % 2 === 0) dist = Math.max(0, dist - 0.5);
-                if (dist / g.maxRowDist <= level) {
-                  const idx = r * cols + c;
-                  st.cells[idx] = Math.min(1, st.cells[idx] + dt * HEAT_GAIN_PER_MS);
-                }
-              }
-            }
-            const cool = Math.exp(-dt / HEAT_COOL_MS);
-            for (let i = 0; i < st.cells.length; i++) st.cells[i] *= cool;
-          }
-          dots = cellDots(st.cells, s, w, h);
-          break;
-        }
-
-        case 'typewriter': {
-          // Cells fill left-to-right, top-to-bottom at a steady pace, each
-          // stamped with the loudness at its moment. The page clears on wrap.
-          ensureCells(st, cols * rows);
-          if (!frozen) {
-            runSteps(st, dt, s.scrollMs, level, () => {
-              if (st.playhead >= st.cells.length) {
-                st.playhead = 0;
-                st.cells.fill(0);
-              }
-              st.cells[st.playhead] = st.maxSinceStep;
-              st.playhead++;
-            });
-            // Live preview at the cursor cell
-            if (st.playhead < st.cells.length) {
-              st.cells[st.playhead] = Math.max(st.maxSinceStep, level);
-            }
-          }
-          dots = cellDots(st.cells, s, w, h);
-          break;
-        }
-
-        case 'hourglass': {
-          // Loudness emits grains that fall and pile up from the bottom.
-          if (st.heights.length !== cols) {
-            st.heights = new Int16Array(cols);
-            st.grains = [];
-          }
-          if (!frozen) {
-            st.budget += dt * GRAIN_RATE_PER_MS * level;
-            const centerCol = (cols - 1) / 2;
-            while (st.budget >= 1) {
-              st.budget -= 1;
-              // Triangular distribution around the center; louder = wider
-              const spread = cols * 0.16 * (0.35 + 0.65 * level);
-              const jitter = (Math.random() + Math.random() + Math.random() - 1.5) * spread;
-              const c = Math.max(0, Math.min(cols - 1, Math.round(centerCol + jitter)));
-              if (st.heights[c] < rows) st.grains.push({ c, r: -0.5 });
-            }
-            const landed: { c: number; r: number }[] = [];
-            for (const grain of st.grains) {
-              grain.r += dtS * GRAIN_FALL_ROWS_PER_S;
-              if (grain.r >= rows - 1 - st.heights[grain.c]) landed.push(grain);
-            }
-            for (const grain of landed) {
-              st.grains.splice(st.grains.indexOf(grain), 1);
-              // Roll down steep slopes like sand
-              let c = grain.c;
-              for (let i = 0; i < 8; i++) {
-                const left = c > 0 && st.heights[c - 1] <= st.heights[c] - 2;
-                const right = c < cols - 1 && st.heights[c + 1] <= st.heights[c] - 2;
-                if (left && right) c += Math.random() < 0.5 ? -1 : 1;
-                else if (left) c--;
-                else if (right) c++;
-                else break;
-              }
-              if (st.heights[c] < rows) st.heights[c]++;
-            }
-          }
-          ensureCells(st, cols * rows);
-          st.cells.fill(0);
-          for (let c = 0; c < cols; c++) {
-            for (let k = 0; k < st.heights[c]; k++) {
-              st.cells[(rows - 1 - k) * cols + c] = 1;
-            }
-          }
-          dots = cellDots(st.cells, s, w, h);
-          // In-flight grains render between cells, so add them directly
-          for (const grain of st.grains) {
-            if (grain.r < -0.4) continue;
-            dots.push({
-              x: (grain.c + 0.5) * g.cellW,
-              y: (Math.min(grain.r, rows - 1) + 0.5) * g.cellH,
-              r: g.radius,
-              active: true,
-            });
-          }
-          break;
-        }
-
-        case 'constellation': {
-          // Loud moments leave persistent stars that fade over minutes.
-          ensureCells(st, cols * rows);
-          if (!frozen) {
-            st.budget += dt * STAR_RATE_PER_MS * level * level;
-            while (st.budget >= 1) {
-              st.budget -= 1;
-              const idx = Math.floor(Math.random() * st.cells.length);
-              st.cells[idx] = Math.max(st.cells[idx], 0.4 + 0.6 * level);
-            }
-            const fade = Math.exp(-dt / STAR_FADE_MS);
-            for (let i = 0; i < st.cells.length; i++) st.cells[i] *= fade;
-          }
-          dots = cellDots(st.cells, s, w, h);
-          break;
-        }
-
         case 'radial': {
           // Seismograph wound around a circle: a clock hand sweeps the take.
           st.values = resizeColumns(st.values, cols);
@@ -680,55 +448,6 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
             st.values[st.playhead] = Math.max(st.maxSinceStep, level);
           }
           dots = radialDots(st.values, s, w, h);
-          break;
-        }
-
-        case 'swarm': {
-          // Every dot is an agent spring-bound to its home column on the
-          // center line; bursts scatter the swarm, silence reforms it.
-          const n = cols * rows;
-          if (st.agents.length !== n * 4) {
-            st.agents = new Float32Array(n * 4);
-            for (let i = 0; i < n; i++) {
-              const c = i % cols;
-              st.agents[i * 4] = (c + 0.5) * g.cellW;
-              st.agents[i * 4 + 1] = h / 2;
-            }
-          }
-          const a = st.agents;
-          if (!frozen) {
-            const kick = level * level * h * 40;
-            for (let i = 0; i < n; i++) {
-              const c = i % cols;
-              const homeX = (c + 0.5) * g.cellW;
-              const x = a[i * 4];
-              const y = a[i * 4 + 1];
-              let vx = a[i * 4 + 2];
-              let vy = a[i * 4 + 3];
-              let ax = SWARM_SPRING * (homeX - x) - SWARM_DAMPING * vx;
-              let ay = SWARM_SPRING * (h / 2 - y) - SWARM_DAMPING * vy;
-              if (kick > 0) {
-                const angle = Math.random() * Math.PI * 2;
-                ax += Math.cos(angle) * kick * 0.35;
-                ay += Math.sin(angle) * kick;
-              }
-              vx += ax * dtS;
-              vy += ay * dtS;
-              a[i * 4] = x + vx * dtS;
-              a[i * 4 + 1] = y + vy * dtS;
-              a[i * 4 + 2] = vx;
-              a[i * 4 + 3] = vy;
-            }
-          }
-          dots = [];
-          for (let i = 0; i < n; i++) {
-            const c = i % cols;
-            const homeX = (c + 0.5) * g.cellW;
-            const x = a[i * 4];
-            const y = a[i * 4 + 1];
-            const settled = Math.abs(y - h / 2) < g.cellH * 0.5 && Math.abs(x - homeX) < g.cellW * 0.5;
-            dots.push({ x, y, r: g.radius, active: settled });
-          }
           break;
         }
       }

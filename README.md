@@ -34,16 +34,10 @@ On viewports ≤768px, settings move into a bottom sheet opened from the gear bu
 | Chronological | History scrolls left; new energy enters on the right |
 | Center-out | Energy expands from the center |
 | Seismograph | Sweeping trace |
-| Peak hold | Scroll with held peaks |
 | Spectrum | Soft multi-band spectrum |
 | Static | Ripple diffusion from center |
 | String | Vibrating string |
-| Heatmap | Intensity sweep |
-| Typewriter | Cells fill over time |
-| Hourglass | Falling grains |
-| Constellation | Sparse point field |
 | Radial | Spokes from center |
-| Swarm | Particle swarm |
 
 **Dot style:** Binary (on/off) or Sub-states (partial growth by threshold).
 

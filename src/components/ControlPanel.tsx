@@ -6,16 +6,10 @@ const MODES: { value: VisualizerMode; label: string }[] = [
   { value: 'chronological', label: 'Chronological' },
   { value: 'centerOut', label: 'Center-out' },
   { value: 'seismograph', label: 'Seismograph' },
-  { value: 'peakHold', label: 'Peak hold' },
   { value: 'spectrum', label: 'Spectrum' },
   { value: 'static', label: 'Static' },
   { value: 'string', label: 'String' },
-  { value: 'heatmap', label: 'Heatmap' },
-  { value: 'typewriter', label: 'Typewriter' },
-  { value: 'hourglass', label: 'Hourglass' },
-  { value: 'constellation', label: 'Constellation' },
   { value: 'radial', label: 'Radial' },
-  { value: 'swarm', label: 'Swarm' },
 ];
 
 /** Modes whose pace is set by the scrollMs step interval, with slider labels */
@@ -23,9 +17,6 @@ const SPEED_CONTROL: Partial<Record<VisualizerMode, { label: string; unit: strin
   chronological: { label: 'Scroll speed', unit: 'ms/col' },
   centerOut: { label: 'Scroll speed', unit: 'ms/col' },
   seismograph: { label: 'Sweep speed', unit: 'ms/col' },
-  peakHold: { label: 'Scroll speed', unit: 'ms/col' },
-  heatmap: { label: 'Sweep speed', unit: 'ms/col' },
-  typewriter: { label: 'Type speed', unit: 'ms/cell' },
   radial: { label: 'Sweep speed', unit: 'ms/spoke' },
 };
 
