@@ -1,32 +1,73 @@
-# React + TypeScript + Vite
+# Speech Dot Grid
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Mic-driven speech energy visualizer styled as a product recorder card. Speak into the microphone and watch a live dot-grid waveform; pause to freeze a frame, then copy or export it.
 
-Currently, two official plugins are available:
+## Quick start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Open the local URL Vite prints, then allow microphone access when the browser asks.
+
+**Build / preview**
+
+```bash
+npm run build
+npm run preview
+```
+
+## How to use
+
+1. Click **Record** and grant mic permission.
+2. Speak — energy in the voice band (~80 Hz–3.4 kHz) drives the grid.
+3. **Pause** freezes the frame (mic stays open); **Resume** continues.
+4. Export the current frame with **Copy SVG**, **Export SVG**, or **Export PNG**.
+
+On viewports ≤768px, settings move into a bottom sheet opened from the gear button. The canvas width follows the card slot (up to the **Max width** control), so on-screen dots and exports stay aligned.
+
+## Visualizer modes
+
+| Mode | Idea |
+|------|------|
+| Chronological | History scrolls left; new energy enters on the right |
+| Center-out | Energy expands from the center |
+| Seismograph | Sweeping trace |
+| Peak hold | Scroll with held peaks |
+| Spectrum | Soft multi-band spectrum |
+| Static | Ripple diffusion from center |
+| String | Vibrating string |
+| Heatmap | Intensity sweep |
+| Typewriter | Cells fill over time |
+| Hourglass | Falling grains |
+| Constellation | Sparse point field |
+| Radial | Spokes from center |
+| Swarm | Particle swarm |
+
+**Dot style:** Binary (on/off) or Sub-states (partial growth by threshold).
+
+## Settings
+
+The side panel (desktop) / drawer (mobile) covers:
+
+- **Mode** — view type and mode-specific pace/taper/ripple controls
+- **Grid** — max width, height, columns, rows, dot size
+- **Color** — active / inactive dots
+- **Feel** — attack, release, noise gate, sensitivity
+
+## Stack
+
+React 19 · TypeScript · Vite · Canvas 2D · Web Audio (`getUserMedia` + `AnalyserNode`)
+
+No backend. Audio never leaves the browser.
+
+## Accessibility notes
+
+- Recorder timer announces state via a polite live region
+- Errors use `role="alert"`
+- Settings drawer is a dialog (Escape closes; focus returns to the opener)
+- UI motion respects `prefers-reduced-motion` (button/drawer transitions)
+- Canvas is labeled as an image for assistive tech
+
+The live waveform still updates while recording — that motion is the product.

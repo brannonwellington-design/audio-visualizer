@@ -35,7 +35,13 @@ export function SettingsDrawer({ open, onClose, children }: Props) {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const closeBtn = drawerRef.current?.querySelector<HTMLElement>('.drawer-close');
+    closeBtn?.focus();
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      previouslyFocused?.focus();
+    };
   }, [open, onClose]);
 
   // Swipe-down on the header follows the finger, then closes past a
@@ -69,7 +75,14 @@ export function SettingsDrawer({ open, onClose, children }: Props) {
   return (
     <div className={`drawer-layer ${open ? 'open' : ''}`} aria-hidden={!open} inert={!open}>
       <div className="drawer-scrim" onClick={onClose} />
-      <div className="drawer" ref={drawerRef} role="dialog" aria-label="Settings">
+      <div
+        className="drawer"
+        ref={drawerRef}
+        id="settings-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+      >
         <div
           className="drawer-header"
           onTouchStart={onTouchStart}

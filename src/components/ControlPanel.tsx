@@ -307,7 +307,7 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
       <section>
         <h2>Grid</h2>
         <Slider
-          label="Width"
+          label="Max width"
           value={settings.width}
           min={240}
           max={1400}

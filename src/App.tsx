@@ -49,6 +49,8 @@ const DEFAULT_SETTINGS: VisualizerSettings = {
 const IDLE_LINE_COLOR = '#A9A69C';
 /** Waveform color while paused */
 const PAUSED_WAVE_COLOR = '#120F08';
+/** Floor for fitted canvas width (matches ControlPanel min) */
+const MIN_FIT_WIDTH = 240;
 
 export default function App() {
   const analyzerRef = useRef<SpeechAnalyzer | null>(null);
@@ -62,7 +64,9 @@ export default function App() {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fitWidth, setFitWidth] = useState<number | null>(null);
   const exportRef = useRef<VisualizerExport | null>(null);
+  const vizSlotRef = useRef<HTMLDivElement>(null);
   const copiedTimerRef = useRef<number | undefined>(undefined);
   /** Recording time accumulated before the most recent resume */
   const accumulatedRef = useRef(0);
@@ -75,6 +79,19 @@ export default function App() {
     }, 200);
     return () => window.clearInterval(tick);
   }, [recState]);
+
+  // Fit the canvas buffer to the card slot so on-screen dots and exports match.
+  useEffect(() => {
+    const el = vizSlotRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (!w || w < 1) return;
+      setFitWidth(Math.floor(w));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const record = async () => {
     setError(null);
@@ -102,10 +119,33 @@ export default function App() {
   };
 
   const copySVG = async () => {
-    await exportRef.current?.copySVG();
-    setCopied(true);
-    window.clearTimeout(copiedTimerRef.current);
-    copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
+    setError(null);
+    try {
+      await exportRef.current?.copySVG();
+      setCopied(true);
+      window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError('Could not copy SVG. Check clipboard permissions and try again.');
+    }
+  };
+
+  const exportSVG = () => {
+    setError(null);
+    try {
+      exportRef.current?.exportSVG();
+    } catch {
+      setError('Could not export SVG. Try again.');
+    }
+  };
+
+  const exportPNG = async () => {
+    setError(null);
+    try {
+      await exportRef.current?.exportPNG();
+    } catch {
+      setError('Could not export PNG. Try again.');
+    }
   };
 
   const patchSettings = useCallback((patch: Partial<VisualizerSettings>) => {
@@ -123,10 +163,16 @@ export default function App() {
     [analyzer],
   );
 
+  const renderWidth =
+    fitWidth != null
+      ? Math.max(MIN_FIT_WIDTH, Math.min(settings.width, fitWidth))
+      : settings.width;
+
   // The card overrides the waveform color by state: muted center line when
   // idle, the configured active color while recording, dark when paused.
   const displaySettings: VisualizerSettings = {
     ...settings,
+    width: renderWidth,
     activeColor:
       recState === 'idle'
         ? IDLE_LINE_COLOR
@@ -145,11 +191,16 @@ export default function App() {
   );
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      style={{ ['--recorder-max-width' as string]: `${settings.width}px` }}
+    >
       <button
+        type="button"
         className="settings-fab"
-        aria-label="Settings"
+        aria-label="Open settings"
         aria-expanded={drawerOpen}
+        aria-controls="settings-drawer"
         onClick={() => setDrawerOpen((o) => !o)}
       >
         <GearIcon />
@@ -158,7 +209,11 @@ export default function App() {
         <header>
           <h1>Speech Dot Grid</h1>
         </header>
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
         <div className="product-stage">
           <RecorderCard
             state={recState}
@@ -166,6 +221,7 @@ export default function App() {
             onRecord={record}
             onPause={pause}
             onResume={resume}
+            vizRef={vizSlotRef}
           >
             <DotGridVisualizer
               analyzer={analyzer}
@@ -176,13 +232,13 @@ export default function App() {
           </RecorderCard>
         </div>
         <div className="button-row">
-          <button className="secondary-button" onClick={copySVG}>
+          <button type="button" className="secondary-button" onClick={copySVG}>
             {copied ? 'Copied' : 'Copy SVG'}
           </button>
-          <button className="secondary-button" onClick={() => exportRef.current?.exportSVG()}>
+          <button type="button" className="secondary-button" onClick={exportSVG}>
             Export SVG
           </button>
-          <button className="secondary-button" onClick={() => exportRef.current?.exportPNG()}>
+          <button type="button" className="secondary-button" onClick={exportPNG}>
             Export PNG
           </button>
         </div>

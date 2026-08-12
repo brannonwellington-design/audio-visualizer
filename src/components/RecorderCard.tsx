@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode, type Ref } from 'react';
 
 export type RecorderState = 'idle' | 'recording' | 'paused';
 
@@ -9,6 +9,8 @@ interface Props {
   onPause: () => void;
   onResume: () => void;
   children: ReactNode;
+  /** Observed by App to fit the canvas to the available card width */
+  vizRef?: Ref<HTMLDivElement>;
 }
 
 function RecordIcon() {
@@ -46,7 +48,15 @@ function formatTime(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-export function RecorderCard({ state, elapsedMs, onRecord, onPause, onResume, children }: Props) {
+export function RecorderCard({
+  state,
+  elapsedMs,
+  onRecord,
+  onPause,
+  onResume,
+  children,
+  vizRef,
+}: Props) {
   const recButtonRef = useRef<HTMLButtonElement>(null);
 
   // The label changes between Record / Pause / Resume, which changes the
@@ -74,20 +84,37 @@ export function RecorderCard({ state, elapsedMs, onRecord, onPause, onResume, ch
   }[state];
 
   const primary = (
-    <button ref={recButtonRef} className={`rec-button ${rec.variant}`} onClick={rec.onClick}>
+    <button
+      ref={recButtonRef}
+      type="button"
+      className={`rec-button ${rec.variant}`}
+      onClick={rec.onClick}
+      aria-pressed={state === 'recording'}
+    >
       {rec.label} {rec.icon}
     </button>
   );
 
+  const timerLabel = formatTime(elapsedMs);
+  const stateLabel =
+    state === 'recording' ? 'Recording' : state === 'paused' ? 'Paused' : 'Idle';
+
   return (
     <div className="recorder-card">
-      <div className="recorder-viz">{children}</div>
+      <div className="recorder-viz" ref={vizRef}>
+        {children}
+      </div>
       <div className="recorder-controls">
         {primary}
-        <span className={`recorder-timer ${state !== 'idle' ? 'active' : ''}`}>
-          {formatTime(elapsedMs)}
+        <span
+          className={`recorder-timer ${state !== 'idle' ? 'active' : ''}`}
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <span className="sr-only">{stateLabel}, </span>
+          {timerLabel}
         </span>
-        <button className="submit-button" disabled={state === 'idle'}>
+        <button className="submit-button" disabled={state === 'idle'} type="button">
           Submit <SubmitIcon />
         </button>
       </div>

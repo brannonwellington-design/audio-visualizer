@@ -46,7 +46,7 @@ export interface VisualizerSettings {
 
 export interface VisualizerExport {
   /** Download the current frame as a PNG (rendered at devicePixelRatio) */
-  exportPNG: () => void;
+  exportPNG: () => Promise<void>;
   /** Download the current frame as a resolution-independent SVG */
   exportSVG: () => void;
   /** Copy the current frame's SVG markup to the clipboard */
@@ -759,14 +759,23 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
   useEffect(() => {
     if (!exportRef) return;
     exportRef.current = {
-      exportPNG: () => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const s = settingsRef.current;
-        canvas.toBlob((blob) => {
-          if (blob) downloadBlob(blob, `dot-grid-${s.width}x${s.height}.png`);
-        }, 'image/png');
-      },
+      exportPNG: () =>
+        new Promise((resolve, reject) => {
+          const canvas = canvasRef.current;
+          if (!canvas) {
+            reject(new Error('Canvas unavailable'));
+            return;
+          }
+          const s = settingsRef.current;
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              reject(new Error('PNG encoding failed'));
+              return;
+            }
+            downloadBlob(blob, `dot-grid-${s.width}x${s.height}.png`);
+            resolve();
+          }, 'image/png');
+        }),
       exportSVG: () => {
         const s = settingsRef.current;
         const svg = buildSVG(lastDotsRef.current, s);
@@ -785,15 +794,15 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
     };
   }, [exportRef]);
 
-  // The canvas keeps rendering (and exporting) at the configured pixel
-  // size, but its on-screen size shrinks with the viewport when the
-  // container is narrower than the configured width.
+  // The canvas buffer matches settings.width/height. App clamps that width
+  // to the card slot, so CSS can fill the slot without letterboxing.
   return (
     <canvas
       ref={canvasRef}
+      role="img"
+      aria-label="Speech energy dot grid"
       style={{
         width: '100%',
-        maxWidth: settings.width,
         height: 'auto',
         aspectRatio: `${settings.width} / ${settings.height}`,
         display: 'block',

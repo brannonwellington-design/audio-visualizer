@@ -53,22 +53,28 @@
   cursor: pointer;
 }
 
-.secondary-button.paused {
-  background: var(--surface-brand-primary);
-  border-color: var(--surface-brand-primary);
-  color: var(--content-brand-contrast);
+.secondary-button:focus-visible,
+.rec-button:focus-visible,
+.submit-button:focus-visible,
+.settings-fab:focus-visible,
+.drawer-close:focus-visible,
+.segmented button:focus-visible,
+.mode-grid button:focus-visible {
+  outline: 2px solid var(--surface-brand-primary);
+  outline-offset: 2px;
 }
 
 /* --- Product recorder card --- */
 
 .product-stage {
   width: 100%;
-  max-width: 100%;
+  max-width: min(100%, calc(var(--recorder-max-width, 600px) + 24px));
   display: flex;
   justify-content: center;
 }
 
 .recorder-card {
+  width: 100%;
   max-width: 100%;
   background: var(--surface-secondary);
   border: 1px solid var(--surface-tertiary);
@@ -77,13 +83,14 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: fit-content;
+  min-width: 0;
 }
 
 .recorder-viz {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   min-width: 0;
 }
 
@@ -181,6 +188,26 @@
   font-size: 13px;
   color: var(--content-negative);
   margin: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-button,
+  .drawer,
+  .drawer-layer {
+    transition: none;
+  }
 }
 
 /* --- Control panel --- */
