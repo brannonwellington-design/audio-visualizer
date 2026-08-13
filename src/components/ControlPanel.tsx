@@ -11,12 +11,14 @@ const MODES: { value: VisualizerMode; label: string }[] = [
   { value: 'string', label: 'String' },
   { value: 'radial', label: 'Radial' },
   { value: 'orbit', label: 'Orbit' },
+  { value: 'spark', label: 'Spark' },
 ];
 
 const TRANSITIONS: { value: TransitionStyle; label: string }[] = [
   { value: 'morph', label: 'Morph' },
   { value: 'curl', label: 'Curl' },
   { value: 'bloom', label: 'Bloom' },
+  { value: 'blink', label: 'Blink' },
 ];
 
 /** Modes whose pace is set by the scrollMs step interval, with slider labels */
@@ -26,6 +28,7 @@ const SPEED_CONTROL: Partial<Record<VisualizerMode, { label: string; unit: strin
   seismograph: { label: 'Sweep speed', unit: 'ms/col' },
   radial: { label: 'Sweep speed', unit: 'ms/spoke' },
   orbit: { label: 'Scroll speed', unit: 'ms/col' },
+  spark: { label: 'Blink speed', unit: 'ms' },
 };
 
 function NumberField({
@@ -192,12 +195,20 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
           ]}
           onChange={(dotStyle) => onSettings({ dotStyle })}
         />
-        <Segmented
-          label="Layout transition"
-          value={settings.transitionStyle}
-          options={TRANSITIONS}
-          onChange={(transitionStyle) => onSettings({ transitionStyle })}
-        />
+        <div className="control">
+          <span className="control-label">Layout transition</span>
+          <div className="mode-grid">
+            {TRANSITIONS.map((t) => (
+              <button
+                key={t.value}
+                className={t.value === settings.transitionStyle ? 'active' : ''}
+                onClick={() => onSettings({ transitionStyle: t.value })}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {speed && (
           <Slider
             label={speed.label}

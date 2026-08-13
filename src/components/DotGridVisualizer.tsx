@@ -9,10 +9,11 @@ export type VisualizerMode =
   | 'centerPulse'
   | 'string'
   | 'radial'
-  | 'orbit';
+  | 'orbit'
+  | 'spark';
 export type DotStyle = 'substates' | 'binary';
 export type LayoutFamily = 'strip' | 'radial';
-export type TransitionStyle = 'morph' | 'curl' | 'bloom';
+export type TransitionStyle = 'morph' | 'curl' | 'bloom' | 'blink';
 
 export interface GridLayout {
   height: number;
@@ -24,7 +25,7 @@ export const STRIP_LAYOUT: GridLayout = { height: 64, columns: 140, rows: 17 };
 export const RADIAL_LAYOUT: GridLayout = { height: 182, columns: 160, rows: 24 };
 
 export function layoutFamily(mode: VisualizerMode): LayoutFamily {
-  return mode === 'radial' || mode === 'orbit' ? 'radial' : 'strip';
+  return mode === 'radial' || mode === 'orbit' || mode === 'spark' ? 'radial' : 'strip';
 }
 
 export function isRadialMode(mode: VisualizerMode): boolean {
@@ -187,6 +188,73 @@ function radialDots(values: number[], s: VisualizerSettings, w: number, h: numbe
   return dots;
 }
 
+function hash01(u: number, v: number): number {
+  const x = Math.sin(u * 127.1 + v * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/**
+ * Same equal-size ring packing as radial, but energy makes dots strobe
+ * instead of holding a solid fill.
+ */
+function sparkDots(
+  values: number[],
+  s: VisualizerSettings,
+  w: number,
+  h: number,
+  now: number,
+): Dot[] {
+  const g = geometry(s, w, h);
+  const cx = w / 2;
+  const cy = h / 2;
+  const outer = Math.min(w, h) / 2 - 2;
+  const inner = outer * 0.12;
+  const ringStep = (outer - inner) / g.rows;
+  const outerArc = (Math.PI * 2 * outer) / Math.max(1, g.cols);
+  const rad = (Math.min(ringStep, outerArc) / 2) * s.dotScale;
+  const rowStep = g.rows > 1 ? 1 / (g.rows - 1) : 1;
+  const basePeriod = 48 + (Math.max(30, s.scrollMs) / 300) * 220;
+  const dots: Dot[] = [];
+  for (let r = 0; r < g.rows; r++) {
+    const threshold = g.rows === 1 ? 0 : r / (g.rows - 1);
+    const ringR = inner + (r + 0.5) * ringStep;
+    const count = Math.max(1, Math.round(g.cols * (ringR / outer)));
+    for (let i = 0; i < count; i++) {
+      const t = i / count;
+      const angle = t * Math.PI * 2 - Math.PI / 2;
+      const col = Math.min(g.cols - 1, Math.floor(t * g.cols));
+      const v = values[col] ?? 0;
+      const energized = v >= threshold && (threshold === 0 || v > 0);
+      let dotR = rad;
+      let active = energized;
+      if (threshold === 0) {
+        active = true;
+      } else if (!energized) {
+        active = false;
+      } else {
+        const excess = Math.min(1, (v - threshold) / Math.max(rowStep, 1e-6));
+        const hsh = hash01(t, (r + 0.5) / g.rows);
+        const period = basePeriod * (0.55 + hsh * 0.9);
+        const duty = 0.1 + 0.72 * excess;
+        const phase = ((now / period) + hsh) % 1;
+        active = phase < duty;
+        if (s.dotStyle === 'substates') {
+          dotR = rad * (0.4 + 0.6 * excess);
+        }
+      }
+      dots.push({
+        x: cx + Math.cos(angle) * ringR,
+        y: cy + Math.sin(angle) * ringR,
+        r: dotR,
+        active,
+        u: t,
+        v: (r + 0.5) / g.rows,
+      });
+    }
+  }
+  return dots;
+}
+
 function buildSVG(dots: Dot[], s: VisualizerSettings): string {
   const round = (n: number) => Math.round(n * 100) / 100;
   const circles = (active: boolean) =>
@@ -310,6 +378,7 @@ const TRANSITION_MS: Record<TransitionStyle, number> = {
   morph: 860,
   curl: 1100,
   bloom: 980,
+  blink: 960,
 };
 
 interface LayoutTransition {
@@ -323,6 +392,7 @@ interface LayoutTransition {
   toW: number;
   toH: number;
   pairs: DotPair[];
+  fromDots: Dot[];
 }
 
 function interpolatePair(
@@ -367,6 +437,24 @@ function interpolatePair(
     return lerpDot(fromPlaced, gather, easeInCubic(t / split));
   }
   return lerpDot(gather, toPlaced, easeOutCubic((t - split) / (1 - split)));
+}
+
+/** Hard on/off flicker while leaving the old layout — positions never lerp. */
+function blinkOutScale(t: number, delay: number): number {
+  const local = (t - delay * 0.24) / 0.36;
+  if (local <= 0) return 1;
+  if (local >= 1) return 0;
+  const on = Math.sin(local * 5 * Math.PI) > 0;
+  return on ? 1 : 0;
+}
+
+/** Hard on/off flicker while arriving in the new layout — positions never lerp. */
+function blinkInScale(t: number, delay: number): number {
+  const local = (t - (0.5 + delay * 0.24)) / 0.36;
+  if (local <= 0) return 0;
+  if (local >= 1) return 1;
+  const on = Math.sin(local * 4 * Math.PI) > 0;
+  return on || local > 0.78 ? 1 : 0;
 }
 
 function taperColumnCount(cols: number, width: number | undefined): number {
@@ -742,6 +830,25 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
           dots = radialDots(values, s, w, h);
           break;
         }
+
+        case 'spark': {
+          // Circular VU: live energy fills rings, but those dots strobe
+          // instead of staying lit — a blink-centric field.
+          const values = new Array<number>(cols);
+          if (frozen) {
+            values.fill(0);
+          } else {
+            const sparkAt = (now / Math.max(30, s.scrollMs)) % cols;
+            for (let c = 0; c < cols; c++) {
+              const dist = Math.abs(c - sparkAt);
+              const wrap = Math.min(dist, cols - dist) / cols;
+              const spark = Math.max(0, 1 - wrap * 10) * 0.28 * level;
+              values[c] = Math.min(1, level + spark);
+            }
+          }
+          dots = sparkDots(values, s, w, h, now);
+          break;
+        }
       }
 
       const pending = pendingFromRef.current;
@@ -758,6 +865,7 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
           toW: w,
           toH: targetH,
           pairs: pairDots(pending.dots, dots),
+          fromDots: pending.dots,
         };
       }
 
@@ -772,7 +880,22 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
           const t = easeInOutCubic(rawT);
           displayW = lerp(xf.fromW, xf.toW, t);
           displayH = lerp(xf.fromH, xf.toH, t);
-          if (xf.pairs.length && dots.length) {
+          if (xf.style === 'blink') {
+            const placed: Dot[] = [];
+            for (const d of xf.fromDots) {
+              const scale = blinkOutScale(rawT, hash01(d.u, d.v));
+              if (scale <= 0.02) continue;
+              const p = placeDot(d, xf.fromFamily, xf.fromW, xf.fromH, displayW, displayH);
+              placed.push({ ...p, r: p.r * scale, active: p.active && scale > 0.2 });
+            }
+            for (const d of dots) {
+              const scale = blinkInScale(rawT, hash01(d.u, d.v));
+              if (scale <= 0.02) continue;
+              const p = placeDot(d, xf.toFamily, xf.toW, xf.toH, displayW, displayH);
+              placed.push({ ...p, r: p.r * scale, active: p.active && scale > 0.2 });
+            }
+            dots = placed;
+          } else if (xf.pairs.length && dots.length) {
             const placed: Dot[] = [];
             for (const pair of xf.pairs) {
               const to = dots[Math.min(pair.toIndex, dots.length - 1)] ?? pair.from;
