@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { SpeechAnalyzer, type AnalyzerParams } from './audio/speechAnalyzer';
 import {
   DotGridVisualizer,
+  layoutFamily,
+  RADIAL_LAYOUT,
+  STRIP_LAYOUT,
+  type GridLayout,
   type VisualizerExport,
   type VisualizerSettings,
 } from './components/DotGridVisualizer';
@@ -43,6 +47,7 @@ const DEFAULT_SETTINGS: VisualizerSettings = {
   taperRightWidth: 0.05,
   rippleMs: 10,
   rippleFalloff: 0.98,
+  transitionStyle: 'curl',
 };
 
 /** Center line color when the recorder is idle, matching the product's resting state */
@@ -148,8 +153,34 @@ export default function App() {
     }
   };
 
+  const layoutsRef = useRef<Record<'strip' | 'radial', GridLayout>>({
+    strip: { ...STRIP_LAYOUT },
+    radial: { ...RADIAL_LAYOUT },
+  });
+
   const patchSettings = useCallback((patch: Partial<VisualizerSettings>) => {
-    setSettings((s) => ({ ...s, ...patch }));
+    setSettings((s) => {
+      if (patch.mode && layoutFamily(patch.mode) !== layoutFamily(s.mode)) {
+        const fromFam = layoutFamily(s.mode);
+        const toFam = layoutFamily(patch.mode);
+        layoutsRef.current[fromFam] = {
+          height: s.height,
+          columns: s.columns,
+          rows: s.rows,
+        };
+        return { ...s, ...patch, ...layoutsRef.current[toFam] };
+      }
+      const next = { ...s, ...patch };
+      if (patch.height != null || patch.columns != null || patch.rows != null) {
+        const fam = layoutFamily(next.mode);
+        layoutsRef.current[fam] = {
+          height: next.height,
+          columns: next.columns,
+          rows: next.rows,
+        };
+      }
+      return next;
+    });
   }, []);
 
   const patchAudio = useCallback(

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import type { SpeechAnalyzer } from '../audio/speechAnalyzer';
 
 export type VisualizerMode =
@@ -8,8 +8,28 @@ export type VisualizerMode =
   | 'spectrum'
   | 'centerPulse'
   | 'string'
-  | 'radial';
+  | 'radial'
+  | 'orbit';
 export type DotStyle = 'substates' | 'binary';
+export type LayoutFamily = 'strip' | 'radial';
+export type TransitionStyle = 'morph' | 'curl' | 'bloom';
+
+export interface GridLayout {
+  height: number;
+  columns: number;
+  rows: number;
+}
+
+export const STRIP_LAYOUT: GridLayout = { height: 64, columns: 140, rows: 17 };
+export const RADIAL_LAYOUT: GridLayout = { height: 182, columns: 160, rows: 24 };
+
+export function layoutFamily(mode: VisualizerMode): LayoutFamily {
+  return mode === 'radial' || mode === 'orbit' ? 'radial' : 'strip';
+}
+
+export function isRadialMode(mode: VisualizerMode): boolean {
+  return layoutFamily(mode) === 'radial';
+}
 
 export interface VisualizerSettings {
   mode: VisualizerMode;
@@ -36,6 +56,8 @@ export interface VisualizerSettings {
   rippleMs: number;
   /** Center pulse: energy retained per column as it travels outward (0..1). String mode: damping. */
   rippleFalloff: number;
+  /** Animation used when switching between strip and radial layouts */
+  transitionStyle: TransitionStyle;
 }
 
 export interface VisualizerExport {
@@ -59,6 +81,10 @@ interface Dot {
   y: number;
   r: number;
   active: boolean;
+  /** 0..1 column / angle identity, used to pair dots across layouts */
+  u: number;
+  /** 0..1 row / radius identity, used to pair dots across layouts */
+  v: number;
 }
 
 interface Geometry {
@@ -105,7 +131,14 @@ function columnDots(values: number[], s: VisualizerSettings, w: number, h: numbe
         const partial = Math.min(1, (v - threshold) / g.rowStep);
         rad = g.radius * (0.35 + 0.65 * partial);
       }
-      dots.push({ x, y: (r + 0.5) * g.cellH, r: rad, active });
+      dots.push({
+        x,
+        y: (r + 0.5) * g.cellH,
+        r: rad,
+        active,
+        u: (c + 0.5) / g.cols,
+        v: (r + 0.5) / g.rows,
+      });
     }
   }
   return dots;
@@ -146,6 +179,8 @@ function radialDots(values: number[], s: VisualizerSettings, w: number, h: numbe
         y: cy + Math.sin(angle) * ringR,
         r: dotR,
         active,
+        u: t,
+        v: (r + 0.5) / g.rows,
       });
     }
   }
@@ -178,6 +213,161 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 const smoothstep = (p: number) => p * p * (3 - 2 * p);
+const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const easeInCubic = (t: number) => t * t * t;
+const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function bezier(a: number, b: number, c: number, t: number) {
+  const mt = 1 - t;
+  return mt * mt * a + 2 * mt * t * b + t * t * c;
+}
+
+function lerpDot(a: Dot, b: Dot, t: number): Dot {
+  return {
+    x: lerp(a.x, b.x, t),
+    y: lerp(a.y, b.y, t),
+    r: lerp(a.r, b.r, t),
+    active: t < 0.5 ? a.active : b.active,
+    u: lerp(a.u, b.u, t),
+    v: lerp(a.v, b.v, t),
+  };
+}
+
+function placeStripDot(d: Dot, srcW: number, srcH: number, dstW: number, dstH: number): Dot {
+  return {
+    ...d,
+    x: d.x * (dstW / Math.max(1, srcW)),
+    y: d.y + (dstH - srcH) / 2,
+  };
+}
+
+function placeRadialDot(d: Dot, srcW: number, srcH: number, dstW: number, dstH: number): Dot {
+  const s = Math.min(dstW / Math.max(1, srcW), dstH / Math.max(1, srcH));
+  return {
+    ...d,
+    x: dstW / 2 + (d.x - srcW / 2) * s,
+    y: dstH / 2 + (d.y - srcH / 2) * s,
+    r: d.r * s,
+  };
+}
+
+function placeDot(
+  d: Dot,
+  family: LayoutFamily,
+  srcW: number,
+  srcH: number,
+  dstW: number,
+  dstH: number,
+): Dot {
+  return family === 'radial'
+    ? placeRadialDot(d, srcW, srcH, dstW, dstH)
+    : placeStripDot(d, srcW, srcH, dstW, dstH);
+}
+
+function curlHandle(d: Dot, w: number, h: number): { x: number; y: number } {
+  const outer = Math.min(w, h) / 2 - 2;
+  const inner = outer * 0.12;
+  const angle = d.u * Math.PI * 2 - Math.PI / 2;
+  const radius = inner + d.v * (outer - inner);
+  return {
+    x: w / 2 + Math.cos(angle) * radius,
+    y: h / 2 + Math.sin(angle) * radius,
+  };
+}
+
+interface DotPair {
+  from: Dot;
+  toIndex: number;
+}
+
+function pairDots(from: Dot[], to: Dot[]): DotPair[] {
+  if (from.length === 0 && to.length === 0) return [];
+  const fs = from
+    .map((d, i) => ({ d, i }))
+    .sort((a, b) => a.d.u - b.d.u || a.d.v - b.d.v);
+  const ts = to
+    .map((d, i) => ({ d, i }))
+    .sort((a, b) => a.d.u - b.d.u || a.d.v - b.d.v);
+  const n = Math.max(fs.length, ts.length, 1);
+  const pairs: DotPair[] = [];
+  for (let k = 0; k < n; k++) {
+    const f = fs.length ? fs[Math.min(fs.length - 1, Math.floor((k * fs.length) / n))] : undefined;
+    const t = ts.length ? ts[Math.min(ts.length - 1, Math.floor((k * ts.length) / n))] : undefined;
+    const fromDot = f?.d ?? (t ? { ...t.d, r: 0 } : { x: 0, y: 0, r: 0, active: false, u: 0.5, v: 0.5 });
+    const toIndex = t?.i ?? 0;
+    pairs.push({ from: fromDot, toIndex });
+  }
+  return pairs;
+}
+
+const TRANSITION_MS: Record<TransitionStyle, number> = {
+  morph: 860,
+  curl: 1100,
+  bloom: 980,
+};
+
+interface LayoutTransition {
+  style: TransitionStyle;
+  start: number;
+  duration: number;
+  fromFamily: LayoutFamily;
+  toFamily: LayoutFamily;
+  fromW: number;
+  fromH: number;
+  toW: number;
+  toH: number;
+  pairs: DotPair[];
+}
+
+function interpolatePair(
+  fromPlaced: Dot,
+  toPlaced: Dot,
+  t: number,
+  style: TransitionStyle,
+  fromFamily: LayoutFamily,
+  w: number,
+  h: number,
+): Dot {
+  if (style === 'morph') return lerpDot(fromPlaced, toPlaced, t);
+
+  if (style === 'curl') {
+    const stripDot = fromFamily === 'strip' ? fromPlaced : toPlaced;
+    const handle = curlHandle(stripDot, w, h);
+    const u = fromFamily === 'strip' ? t : 1 - t;
+    const stripSide = fromFamily === 'strip' ? fromPlaced : toPlaced;
+    const radialSide = fromFamily === 'radial' ? fromPlaced : toPlaced;
+    const eu = easeInOutCubic(u);
+    return {
+      x: bezier(stripSide.x, handle.x, radialSide.x, eu),
+      y: bezier(stripSide.y, handle.y, radialSide.y, eu),
+      r: lerp(fromPlaced.r, toPlaced.r, t),
+      active: t < 0.5 ? fromPlaced.active : toPlaced.active,
+      u: lerp(fromPlaced.u, toPlaced.u, t),
+      v: lerp(fromPlaced.v, toPlaced.v, t),
+    };
+  }
+
+  // Bloom: collapse through the canvas center, then expand into the new layout.
+  const split = 0.44;
+  const gather: Dot = {
+    x: w / 2,
+    y: h / 2,
+    r: Math.max(0.4, Math.min(fromPlaced.r, toPlaced.r) * 0.18),
+    active: t < split ? fromPlaced.active : toPlaced.active,
+    u: 0.5,
+    v: 0.5,
+  };
+  if (t < split) {
+    return lerpDot(fromPlaced, gather, easeInCubic(t / split));
+  }
+  return lerpDot(gather, toPlaced, easeOutCubic((t - split) / (1 - split)));
+}
 
 function taperColumnCount(cols: number, width: number | undefined): number {
   const fraction = Number.isFinite(width) ? Math.min(0.5, Math.max(0, width as number)) : 0.05;
@@ -283,6 +473,7 @@ function runSteps(st: EngineState, dt: number, periodMs: number, level: number, 
  */
 export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const pausedRef = useRef(paused);
@@ -291,10 +482,27 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
   const stateRef = useRef<EngineState>(freshState(settings.mode));
   /** The dots drawn in the most recent frame; source of truth for exports */
   const lastDotsRef = useRef<Dot[]>([]);
+  const lastFrameRef = useRef({
+    w: settings.width,
+    h: settings.height,
+    family: layoutFamily(settings.mode),
+    mode: settings.mode,
+  });
+  const transitionRef = useRef<LayoutTransition | null>(null);
+  const pendingFromRef = useRef<{
+    dots: Dot[];
+    family: LayoutFamily;
+    w: number;
+    h: number;
+    style: TransitionStyle;
+  } | null>(null);
+  const displaySizeRef = useRef({ w: settings.width, h: settings.height });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const box = boxRef.current;
+    if (!canvas || !box) return;
+    box.style.aspectRatio = `${settingsRef.current.width} / ${settingsRef.current.height}`;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -308,25 +516,33 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
       const dt = frozen ? 0 : Math.min(100, now - lastTime);
       lastTime = now;
 
-      const dpr = window.devicePixelRatio || 1;
       const w = s.width;
-      const h = s.height;
-      const pxW = Math.round(w * dpr);
-      const pxH = Math.round(h * dpr);
-      if (canvas.width !== pxW || canvas.height !== pxH) {
-        canvas.width = pxW;
-        canvas.height = pxH;
-      }
+      const targetH = s.height;
+      const family = layoutFamily(s.mode);
+      const prev = lastFrameRef.current;
 
       let st = stateRef.current;
       if (st.mode !== s.mode) {
+        if (prev.family !== family && lastDotsRef.current.length > 0) {
+          pendingFromRef.current = {
+            dots: lastDotsRef.current.slice(),
+            family: prev.family,
+            w: prev.w,
+            h: prev.h,
+            style: s.transitionStyle,
+          };
+        }
+        const prevValues = st.values;
         st = stateRef.current = freshState(s.mode);
+        st.values = resizeColumns(prevValues, Math.max(1, s.columns));
       }
 
       const level = frozen ? 0 : analyzer.getLevel(now);
       const cols = Math.max(1, s.columns);
       const dtS = dt / 1000;
 
+      const engineH = targetH;
+      const h = engineH;
       let dots: Dot[];
       switch (s.mode) {
         case 'chronological': {
@@ -507,13 +723,86 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
           dots = radialDots(values, s, w, h);
           break;
         }
+
+        case 'orbit': {
+          // Chronological history wrapped into a ring: newest sits at the
+          // seam, older samples travel around the circle.
+          st.values = resizeColumns(st.values, cols);
+          if (!frozen) {
+            runSteps(st, dt, s.scrollMs, level, () => {
+              st.values.push(st.maxSinceStep);
+              st.values.shift();
+            });
+          }
+          const values = st.values.slice();
+          if (!frozen) {
+            values[cols - 1] = Math.max(values[cols - 1], level);
+          }
+          applyEdgeTapers(values, s);
+          dots = radialDots(values, s, w, h);
+          break;
+        }
+      }
+
+      const pending = pendingFromRef.current;
+      if (pending) {
+        pendingFromRef.current = null;
+        transitionRef.current = {
+          style: pending.style,
+          start: now,
+          duration: prefersReducedMotion() ? 1 : TRANSITION_MS[pending.style],
+          fromFamily: pending.family,
+          toFamily: family,
+          fromW: pending.w,
+          fromH: pending.h,
+          toW: w,
+          toH: targetH,
+          pairs: pairDots(pending.dots, dots),
+        };
+      }
+
+      const xf = transitionRef.current;
+      let displayW = w;
+      let displayH = targetH;
+      if (xf) {
+        const rawT = clamp01((now - xf.start) / xf.duration);
+        if (rawT >= 1) {
+          transitionRef.current = null;
+        } else {
+          const t = easeInOutCubic(rawT);
+          displayW = lerp(xf.fromW, xf.toW, t);
+          displayH = lerp(xf.fromH, xf.toH, t);
+          if (xf.pairs.length && dots.length) {
+            const placed: Dot[] = [];
+            for (const pair of xf.pairs) {
+              const to = dots[Math.min(pair.toIndex, dots.length - 1)] ?? pair.from;
+              const fromPlaced = placeDot(pair.from, xf.fromFamily, xf.fromW, xf.fromH, displayW, displayH);
+              const toPlaced = placeDot(to, xf.toFamily, xf.toW, xf.toH, displayW, displayH);
+              placed.push(
+                interpolatePair(fromPlaced, toPlaced, t, xf.style, xf.fromFamily, displayW, displayH),
+              );
+            }
+            dots = placed;
+          }
+        }
       }
 
       lastDotsRef.current = dots;
+      displaySizeRef.current = { w: displayW, h: displayH };
+      lastFrameRef.current = { w: displayW, h: displayH, family, mode: s.mode };
+
+      const dpr = window.devicePixelRatio || 1;
+      const pxW = Math.round(displayW * dpr);
+      const pxH = Math.round(displayH * dpr);
+      if (canvas.width !== pxW || canvas.height !== pxH) {
+        canvas.width = pxW;
+        canvas.height = pxH;
+      }
+      box.style.aspectRatio = `${displayW} / ${displayH}`;
 
       // --- Draw ---
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
+      ctx.clearRect(0, 0, displayW, displayH);
       const drawPass = (color: string, active: boolean) => {
         ctx.fillStyle = color;
         ctx.beginPath();
@@ -542,26 +831,29 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
             reject(new Error('Canvas unavailable'));
             return;
           }
-          const s = settingsRef.current;
+          const size = displaySizeRef.current;
           canvas.toBlob((blob) => {
             if (!blob) {
               reject(new Error('PNG encoding failed'));
               return;
             }
-            downloadBlob(blob, `dot-grid-${s.width}x${s.height}.png`);
+            downloadBlob(blob, `dot-grid-${Math.round(size.w)}x${Math.round(size.h)}.png`);
             resolve();
           }, 'image/png');
         }),
       exportSVG: () => {
         const s = settingsRef.current;
-        const svg = buildSVG(lastDotsRef.current, s);
+        const size = displaySizeRef.current;
+        const svg = buildSVG(lastDotsRef.current, { ...s, width: size.w, height: size.h });
         downloadBlob(
           new Blob([svg], { type: 'image/svg+xml' }),
-          `dot-grid-${s.width}x${s.height}.svg`,
+          `dot-grid-${Math.round(size.w)}x${Math.round(size.h)}.svg`,
         );
       },
       copySVG: async () => {
-        const svg = buildSVG(lastDotsRef.current, settingsRef.current);
+        const s = settingsRef.current;
+        const size = displaySizeRef.current;
+        const svg = buildSVG(lastDotsRef.current, { ...s, width: size.w, height: size.h });
         await navigator.clipboard.writeText(svg);
       },
     };
@@ -570,19 +862,28 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
     };
   }, [exportRef]);
 
-  // The canvas buffer matches settings.width/height. App clamps that width
+  // The canvas buffer matches the displayed size. App clamps width
   // to the card slot, so CSS can fill the slot without letterboxing.
+  // Aspect ratio is driven from the rAF loop so layout-family switches
+  // can ease height while dots travel to their new positions.
   return (
-    <canvas
-      ref={canvasRef}
-      role="img"
-      aria-label="Speech energy dot grid"
+    <div
+      ref={boxRef}
       style={{
         width: '100%',
         height: 'auto',
-        aspectRatio: `${settings.width} / ${settings.height}`,
-        display: 'block',
       }}
-    />
+    >
+      <canvas
+        ref={canvasRef}
+        role="img"
+        aria-label="Speech energy dot grid"
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'block',
+        }}
+      />
+    </div>
   );
 }
