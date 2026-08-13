@@ -94,6 +94,10 @@
   min-width: 0;
 }
 
+.recorder-viz > div {
+  width: 100%;
+}
+
 .recorder-controls {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

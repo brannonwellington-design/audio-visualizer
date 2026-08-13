@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { VisualizerMode, VisualizerSettings } from './DotGridVisualizer';
+import type { TransitionStyle, VisualizerMode, VisualizerSettings } from './DotGridVisualizer';
 import type { AnalyzerParams } from '../audio/speechAnalyzer';
 
 const MODES: { value: VisualizerMode; label: string }[] = [
@@ -10,6 +10,13 @@ const MODES: { value: VisualizerMode; label: string }[] = [
   { value: 'centerPulse', label: 'Center pulse' },
   { value: 'string', label: 'String' },
   { value: 'radial', label: 'Radial' },
+  { value: 'orbit', label: 'Orbit' },
+];
+
+const TRANSITIONS: { value: TransitionStyle; label: string }[] = [
+  { value: 'morph', label: 'Morph' },
+  { value: 'curl', label: 'Curl' },
+  { value: 'bloom', label: 'Bloom' },
 ];
 
 /** Modes whose pace is set by the scrollMs step interval, with slider labels */
@@ -18,6 +25,7 @@ const SPEED_CONTROL: Partial<Record<VisualizerMode, { label: string; unit: strin
   centerChron: { label: 'Scroll speed', unit: 'ms/col' },
   seismograph: { label: 'Sweep speed', unit: 'ms/col' },
   radial: { label: 'Sweep speed', unit: 'ms/spoke' },
+  orbit: { label: 'Scroll speed', unit: 'ms/col' },
 };
 
 function NumberField({
@@ -184,6 +192,12 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
           ]}
           onChange={(dotStyle) => onSettings({ dotStyle })}
         />
+        <Segmented
+          label="Layout transition"
+          value={settings.transitionStyle}
+          options={TRANSITIONS}
+          onChange={(transitionStyle) => onSettings({ transitionStyle })}
+        />
         {speed && (
           <Slider
             label={speed.label}
@@ -307,7 +321,7 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
           value={settings.height}
           min={32}
           max={600}
-          step={10}
+          step={1}
           editable
           onChange={(height) => onSettings({ height })}
         />
@@ -315,7 +329,7 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
           label="Columns"
           value={settings.columns}
           min={8}
-          max={160}
+          max={200}
           onChange={(columns) => onSettings({ columns })}
         />
         <Slider
