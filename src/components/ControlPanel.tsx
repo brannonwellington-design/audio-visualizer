@@ -4,10 +4,10 @@ import type { AnalyzerParams } from '../audio/speechAnalyzer';
 
 const MODES: { value: VisualizerMode; label: string }[] = [
   { value: 'chronological', label: 'Chronological' },
-  { value: 'centerOut', label: 'Center-out' },
+  { value: 'centerChron', label: 'Center chron' },
   { value: 'seismograph', label: 'Seismograph' },
   { value: 'spectrum', label: 'Spectrum' },
-  { value: 'static', label: 'Static' },
+  { value: 'centerPulse', label: 'Center pulse' },
   { value: 'string', label: 'String' },
   { value: 'radial', label: 'Radial' },
 ];
@@ -15,7 +15,7 @@ const MODES: { value: VisualizerMode; label: string }[] = [
 /** Modes whose pace is set by the scrollMs step interval, with slider labels */
 const SPEED_CONTROL: Partial<Record<VisualizerMode, { label: string; unit: string }>> = {
   chronological: { label: 'Scroll speed', unit: 'ms/col' },
-  centerOut: { label: 'Scroll speed', unit: 'ms/col' },
+  centerChron: { label: 'Scroll speed', unit: 'ms/col' },
   seismograph: { label: 'Sweep speed', unit: 'ms/col' },
   radial: { label: 'Sweep speed', unit: 'ms/spoke' },
 };
@@ -195,61 +195,57 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
             onChange={(scrollMs) => onSettings({ scrollMs })}
           />
         )}
-        {settings.mode === 'chronological' && (
-          <>
-            <Segmented
-              label="Left taper"
-              value={settings.taperLeft ? 'on' : 'off'}
-              options={[
-                { value: 'on', label: 'On' },
-                { value: 'off', label: 'Off' },
-              ]}
-              onChange={(v) =>
-                onSettings({
-                  taperLeft: v === 'on',
-                  taperLeftWidth: settings.taperLeftWidth ?? 0.05,
-                })
-              }
-            />
-            {settings.taperLeft && (
-              <Slider
-                label="Left taper width"
-                value={settings.taperLeftWidth ?? 0.05}
-                min={0.01}
-                max={0.5}
-                step={0.01}
-                format={(v) => `${Math.round(v * 100)}%`}
-                onChange={(taperLeftWidth) => onSettings({ taperLeftWidth })}
-              />
-            )}
-            <Segmented
-              label="Right taper"
-              value={settings.taperRight ? 'on' : 'off'}
-              options={[
-                { value: 'on', label: 'On' },
-                { value: 'off', label: 'Off' },
-              ]}
-              onChange={(v) =>
-                onSettings({
-                  taperRight: v === 'on',
-                  taperRightWidth: settings.taperRightWidth ?? 0.05,
-                })
-              }
-            />
-            {settings.taperRight && (
-              <Slider
-                label="Right taper width"
-                value={settings.taperRightWidth ?? 0.05}
-                min={0.01}
-                max={0.5}
-                step={0.01}
-                format={(v) => `${Math.round(v * 100)}%`}
-                onChange={(taperRightWidth) => onSettings({ taperRightWidth })}
-              />
-            )}
-          </>
+        <Segmented
+          label="Left taper"
+          value={settings.taperLeft ? 'on' : 'off'}
+          options={[
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+          ]}
+          onChange={(v) =>
+            onSettings({
+              taperLeft: v === 'on',
+              taperLeftWidth: settings.taperLeftWidth ?? 0.05,
+            })
+          }
+        />
+        {settings.taperLeft && (
+          <Slider
+            label="Left taper width"
+            value={settings.taperLeftWidth ?? 0.05}
+            min={0.01}
+            max={0.5}
+            step={0.01}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(taperLeftWidth) => onSettings({ taperLeftWidth })}
+          />
         )}
-        {settings.mode === 'static' && (
+        <Segmented
+          label="Right taper"
+          value={settings.taperRight ? 'on' : 'off'}
+          options={[
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+          ]}
+          onChange={(v) =>
+            onSettings({
+              taperRight: v === 'on',
+              taperRightWidth: settings.taperRightWidth ?? 0.05,
+            })
+          }
+        />
+        {settings.taperRight && (
+          <Slider
+            label="Right taper width"
+            value={settings.taperRightWidth ?? 0.05}
+            min={0.01}
+            max={0.5}
+            step={0.01}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(taperRightWidth) => onSettings({ taperRightWidth })}
+          />
+        )}
+        {settings.mode === 'centerPulse' && (
           <>
             <Slider
               label="Ripple speed"
@@ -326,8 +322,8 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
           label="Rows"
           value={settings.rows}
           min={3}
-          max={41}
-          step={2}
+          max={100}
+          step={1}
           onChange={(rows) => onSettings({ rows })}
         />
         <Slider

@@ -3,10 +3,10 @@ import type { SpeechAnalyzer } from '../audio/speechAnalyzer';
 
 export type VisualizerMode =
   | 'chronological'
-  | 'centerOut'
+  | 'centerChron'
   | 'seismograph'
   | 'spectrum'
-  | 'static'
+  | 'centerPulse'
   | 'string'
   | 'radial';
 export type DotStyle = 'substates' | 'binary';
@@ -24,17 +24,17 @@ export interface VisualizerSettings {
   inactiveColor: string;
   /** Time-based modes: how many ms each column/cell represents */
   scrollMs: number;
-  /** Chronological mode: taper columns down to the center line as they near the left (exit) edge */
+  /** Taper columns down to the center line as they near the left (exit) edge */
   taperLeft: boolean;
-  /** Chronological mode: portion of the grid width used for the left taper (0..0.5) */
+  /** Portion of the grid width used for the left taper (0..0.5) */
   taperLeftWidth: number;
-  /** Chronological mode: taper incoming columns near the right (entry) edge */
+  /** Taper incoming columns near the right (entry) edge */
   taperRight: boolean;
-  /** Chronological mode: portion of the grid width used for the right taper (0..0.5) */
+  /** Portion of the grid width used for the right taper (0..0.5) */
   taperRightWidth: number;
-  /** Static mode: ms for energy to propagate one column outward. String mode: wave speed. */
+  /** Center pulse: ms for energy to propagate one column outward. String mode: wave speed. */
   rippleMs: number;
-  /** Static mode: energy retained per column as it travels outward (0..1). String mode: damping. */
+  /** Center pulse: energy retained per column as it travels outward (0..1). String mode: damping. */
   rippleFalloff: number;
 }
 
@@ -111,33 +111,42 @@ function columnDots(values: number[], s: VisualizerSettings, w: number, h: numbe
   return dots;
 }
 
-/** Column values wound around a circle: spokes are columns, rings are rows. */
+/**
+ * Concentric rings of equal-sized dots. Inner rings use fewer dots so
+ * spacing stays even — energy grows outward from a baseline inner ring.
+ */
 function radialDots(values: number[], s: VisualizerSettings, w: number, h: number): Dot[] {
   const g = geometry(s, w, h);
   const cx = w / 2;
   const cy = h / 2;
   const outer = Math.min(w, h) / 2 - 2;
-  const inner = outer * 0.3;
+  const inner = outer * 0.12;
   const ringStep = (outer - inner) / g.rows;
+  const outerArc = (Math.PI * 2 * outer) / Math.max(1, g.cols);
+  const rad = (Math.min(ringStep, outerArc) / 2) * s.dotScale;
+  const rowStep = g.rows > 1 ? 1 / (g.rows - 1) : 1;
   const dots: Dot[] = [];
-  for (let c = 0; c < g.cols; c++) {
-    const v = values[c] ?? 0;
-    const angle = (c / g.cols) * Math.PI * 2 - Math.PI / 2;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    for (let r = 0; r < g.rows; r++) {
-      let dist = Math.abs(r - g.centerRow);
-      if (g.rows % 2 === 0) dist = Math.max(0, dist - 0.5);
-      const threshold = dist / g.maxRowDist;
+  for (let r = 0; r < g.rows; r++) {
+    const threshold = g.rows === 1 ? 0 : r / (g.rows - 1);
+    const ringR = inner + (r + 0.5) * ringStep;
+    const count = Math.max(1, Math.round(g.cols * (ringR / outer)));
+    for (let i = 0; i < count; i++) {
+      const t = i / count;
+      const angle = t * Math.PI * 2 - Math.PI / 2;
+      const col = Math.min(g.cols - 1, Math.floor(t * g.cols));
+      const v = values[col] ?? 0;
       const active = v >= threshold && (threshold === 0 || v > 0);
-      const ringR = inner + (r + 0.5) * ringStep;
-      const arcSpacing = (Math.PI * 2 * ringR) / g.cols;
-      let rad = (Math.min(ringStep, arcSpacing) / 2) * s.dotScale;
+      let dotR = rad;
       if (active && s.dotStyle === 'substates' && threshold > 0) {
-        const partial = Math.min(1, (v - threshold) / g.rowStep);
-        rad *= 0.35 + 0.65 * partial;
+        const partial = Math.min(1, (v - threshold) / rowStep);
+        dotR = rad * (0.35 + 0.65 * partial);
       }
-      dots.push({ x: cx + cos * ringR, y: cy + sin * ringR, r: rad, active });
+      dots.push({
+        x: cx + Math.cos(angle) * ringR,
+        y: cy + Math.sin(angle) * ringR,
+        r: dotR,
+        active,
+      });
     }
   }
   return dots;
@@ -170,6 +179,47 @@ function downloadBlob(blob: Blob, filename: string) {
 
 const smoothstep = (p: number) => p * p * (3 - 2 * p);
 
+function taperColumnCount(cols: number, width: number | undefined): number {
+  const fraction = Number.isFinite(width) ? Math.min(0.5, Math.max(0, width as number)) : 0.05;
+  return Math.max(1, Math.round(cols * fraction));
+}
+
+/** Fade column values at the left (exit) and/or right (entry) canvas edges. */
+function applyEdgeTapers(values: number[], s: VisualizerSettings) {
+  const cols = values.length;
+  const fade = (fromLeft: boolean, enabled: boolean, width: number | undefined) => {
+    if (!enabled) return;
+    const taperCols = taperColumnCount(cols, width);
+    for (let c = 0; c < Math.min(taperCols, cols); c++) {
+      const idx = fromLeft ? c : cols - 1 - c;
+      values[idx] *= smoothstep(c / taperCols);
+    }
+  };
+  fade(true, s.taperLeft, s.taperLeftWidth);
+  fade(false, s.taperRight, s.taperRightWidth);
+}
+
+/**
+ * Fade around a sweeping playhead: left taper shrinks old data ahead of it
+ * (the refresh), right taper grows new data in behind it.
+ */
+function applyPlayheadTapers(values: number[], playhead: number, s: VisualizerSettings) {
+  const cols = values.length;
+  if (cols < 1) return;
+  const fade = (ahead: boolean, enabled: boolean, width: number | undefined) => {
+    if (!enabled) return;
+    const taperCols = taperColumnCount(cols, width);
+    for (let c = 0; c < Math.min(taperCols, cols); c++) {
+      const idx = ahead
+        ? (playhead + 1 + c) % cols
+        : (playhead - c + cols) % cols;
+      values[idx] *= smoothstep(c / taperCols);
+    }
+  };
+  fade(true, s.taperLeft, s.taperLeftWidth);
+  fade(false, s.taperRight, s.taperRightWidth);
+}
+
 /**
  * All per-mode mutable simulation state. Everything resets when the mode
  * changes (so comparisons start clean); within a mode, arrays are resized
@@ -183,7 +233,7 @@ interface EngineState {
   maxSinceStep: number;
   /** Column history for scroll modes, persistent trace for sweep modes */
   values: number[];
-  /** Static mode diffusion chain */
+  /** Center pulse mode diffusion chain */
   trail: number[];
   /** Sweep write position */
   playhead: number;
@@ -293,31 +343,12 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
             // the visual never feels a sample-interval behind the voice.
             values[cols - 1] = Math.max(values[cols - 1], level);
           }
-          // Ease columns down to the center line near the edges: the exit
-          // (left) so loud moments shrink away instead of popping off, and
-          // the entry (right) so new audio grows in instead of appearing.
-          const applyEdgeTaper = (
-            fromLeft: boolean,
-            enabled: boolean | undefined,
-            width: number | undefined,
-          ) => {
-            if (!enabled) return;
-            const fraction = Number.isFinite(width)
-              ? Math.min(0.5, Math.max(0, width as number))
-              : 0.05;
-            const taperCols = Math.max(1, Math.round(cols * fraction));
-            for (let c = 0; c < Math.min(taperCols, cols); c++) {
-              const idx = fromLeft ? c : cols - 1 - c;
-              values[idx] *= smoothstep(c / taperCols);
-            }
-          };
-          applyEdgeTaper(true, s.taperLeft, s.taperLeftWidth);
-          applyEdgeTaper(false, s.taperRight, s.taperRightWidth);
+          applyEdgeTapers(values, s);
           dots = columnDots(values, s, w, h);
           break;
         }
 
-        case 'centerOut': {
+        case 'centerChron': {
           // Newest sample lives at the center, older samples flow outward
           // toward both edges symmetrically.
           const maxDist = Math.floor((cols - 1) / 2) + 1;
@@ -338,36 +369,45 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
             const mid = Math.round(centerCol);
             values[mid] = Math.max(values[mid], level);
           }
+          applyEdgeTapers(values, s);
           dots = columnDots(values, s, w, h);
           break;
         }
 
         case 'seismograph': {
-          // A playhead sweeps left to right stamping levels in place, with a
-          // small cleared gap ahead of it so the wrap point reads clearly.
+          // A playhead sweeps left to right stamping levels in place. The wrap
+          // is either a hard gap (tapers off) or a fade that uses the left/
+          // right taper widths so old data shrinks away and new data grows in.
           st.values = resizeColumns(st.values, cols);
           st.playhead = st.playhead % cols;
           if (!frozen) {
             const gap = Math.max(2, Math.round(cols * 0.04));
+            const hardGap = !s.taperLeft && !s.taperRight;
             runSteps(st, dt, s.scrollMs, level, () => {
               st.values[st.playhead] = st.maxSinceStep;
               st.playhead = (st.playhead + 1) % cols;
-              for (let i = 0; i < gap; i++) st.values[(st.playhead + i) % cols] = 0;
+              if (hardGap) {
+                for (let i = 0; i < gap; i++) st.values[(st.playhead + i) % cols] = 0;
+              }
             });
             st.values[st.playhead] = Math.max(st.maxSinceStep, level);
           }
-          dots = columnDots(st.values, s, w, h);
+          const values = st.values.slice();
+          applyEdgeTapers(values, s);
+          applyPlayheadTapers(values, st.playhead, s);
+          dots = columnDots(values, s, w, h);
           break;
         }
 
         case 'spectrum': {
           // Columns are log-spaced frequency bands, low on the left.
           const values = frozen ? new Array(cols).fill(0) : analyzer.getSpectrum(cols, now);
+          applyEdgeTapers(values, s);
           dots = columnDots(values, s, w, h);
           break;
         }
 
-        case 'static': {
+        case 'centerPulse': {
           // Energy propagates outward from the center column through a
           // diffusion chain, creating the ripple.
           const maxDist = Math.floor((cols - 1) / 2) + 1;
@@ -391,13 +431,14 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
             const d = Math.round(Math.abs(c - centerCol));
             values[c] = t[Math.min(d, t.length - 1)];
           }
+          applyEdgeTapers(values, s);
           dots = columnDots(values, s, w, h);
           break;
         }
 
         case 'string': {
-          // The center line is a plucked string: the voice drives the middle
-          // and waves propagate outward with momentum and reflections.
+          // Driven at the center; waves travel outward and are absorbed at
+          // the ends so energy cannot pile up into a solid, never-resetting block.
           if (st.stringU.length !== cols) {
             st.stringU = new Float32Array(cols);
             st.stringV = new Float32Array(cols);
@@ -405,12 +446,12 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
           const u = st.stringU;
           const v = st.stringV;
           if (!frozen && cols >= 3) {
-            // rippleMs = ms for a wave to cross one column
-            const c2 = Math.pow(1000 / Math.max(5, s.rippleMs), 2);
-            const damping = 0.5 + (1 - s.rippleFalloff) * 30;
+            const speed = 1000 / Math.max(8, s.rippleMs);
+            const c2 = speed * speed;
+            const damping = 3 + (1 - s.rippleFalloff) * 36;
+            const restore = 8 + (1 - s.rippleFalloff) * 40;
             const mid = Math.floor((cols - 1) / 2);
-            // Substep for stability (explicit integration of a stiff system)
-            const maxStep = Math.min(0.008, 0.5 / Math.sqrt(c2));
+            const maxStep = Math.min(0.005, 0.35 / Math.max(speed, 1));
             let remaining = dtS;
             while (remaining > 0) {
               const step = Math.min(maxStep, remaining);
@@ -419,35 +460,51 @@ export function DotGridVisualizer({ analyzer, settings, paused, exportRef }: Pro
               v[mid] = 0;
               for (let i = 1; i < cols - 1; i++) {
                 if (i === mid) continue;
-                const acc = c2 * (u[i - 1] + u[i + 1] - 2 * u[i]) - damping * v[i];
+                const acc =
+                  c2 * (u[i - 1] + u[i + 1] - 2 * u[i]) -
+                  damping * v[i] -
+                  restore * u[i];
                 v[i] += acc * step;
+                v[i] = Math.max(-4, Math.min(4, v[i]));
               }
               for (let i = 1; i < cols - 1; i++) {
                 if (i === mid) continue;
                 u[i] += v[i] * step;
+                u[i] = Math.max(0, Math.min(1, u[i]));
+                if (u[i] === 0 || u[i] === 1) v[i] *= 0.3;
               }
+              u[0] = Math.max(0, u[1] * 0.45);
+              u[cols - 1] = Math.max(0, u[cols - 2] * 0.45);
+              v[0] = 0;
+              v[cols - 1] = 0;
             }
           }
           const values = new Array<number>(cols);
-          for (let c = 0; c < cols; c++) values[c] = Math.min(1, Math.abs(u[c]));
+          for (let c = 0; c < cols; c++) values[c] = u[c];
+          applyEdgeTapers(values, s);
           dots = columnDots(values, s, w, h);
           break;
         }
 
         case 'radial': {
-          // Seismograph wound around a circle: a clock hand sweeps the take.
+          // Circular seismograph: a clock hand sweeps equal-sized dots.
           st.values = resizeColumns(st.values, cols);
           st.playhead = st.playhead % cols;
           if (!frozen) {
             const gap = Math.max(2, Math.round(cols * 0.04));
+            const hardGap = !s.taperLeft && !s.taperRight;
             runSteps(st, dt, s.scrollMs, level, () => {
               st.values[st.playhead] = st.maxSinceStep;
               st.playhead = (st.playhead + 1) % cols;
-              for (let i = 0; i < gap; i++) st.values[(st.playhead + i) % cols] = 0;
+              if (hardGap) {
+                for (let i = 0; i < gap; i++) st.values[(st.playhead + i) % cols] = 0;
+              }
             });
             st.values[st.playhead] = Math.max(st.maxSinceStep, level);
           }
-          dots = radialDots(st.values, s, w, h);
+          const values = st.values.slice();
+          applyPlayheadTapers(values, st.playhead, s);
+          dots = radialDots(values, s, w, h);
           break;
         }
       }
