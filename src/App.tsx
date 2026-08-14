@@ -9,9 +9,11 @@ import {
   type VisualizerExport,
   type VisualizerSettings,
 } from './components/DotGridVisualizer';
+import { ThinkingGridVisualizer } from './components/ThinkingGridVisualizer';
 import { ControlPanel } from './components/ControlPanel';
 import { RecorderCard, type RecorderState } from './components/RecorderCard';
 import { SettingsDrawer } from './components/SettingsDrawer';
+import { DEFAULT_THINKING, type ThinkingRun, type ThinkingSettings } from './thinking/types';
 import './App.css';
 
 function GearIcon() {
@@ -63,6 +65,11 @@ export default function App() {
   const analyzer = analyzerRef.current;
 
   const [settings, setSettings] = useState<VisualizerSettings>(() => ({ ...DEFAULT_SETTINGS }));
+  const [thinking, setThinking] = useState<ThinkingSettings>(() => ({ ...DEFAULT_THINKING }));
+  const [appMode, setAppMode] = useState<'audio' | 'thinking'>('audio');
+  const [thinkRun, setThinkRun] = useState<ThinkingRun>('idle');
+  const [thinkSeed, setThinkSeed] = useState(1);
+  const [thinkStartedAt, setThinkStartedAt] = useState(0);
   const [audio, setAudio] = useState<AnalyzerParams>({ ...analyzer.params });
   const [recState, setRecState] = useState<RecorderState>('idle');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -84,6 +91,20 @@ export default function App() {
     }, 200);
     return () => window.clearInterval(tick);
   }, [recState]);
+
+  useEffect(() => {
+    if (appMode !== 'thinking' || thinkRun !== 'running') return;
+    const tick = window.setInterval(() => {
+      setElapsedMs(performance.now() - thinkStartedAt);
+    }, 200);
+    return () => window.clearInterval(tick);
+  }, [appMode, thinkRun, thinkStartedAt]);
+
+  useEffect(() => {
+    if (appMode !== 'thinking' || thinkRun !== 'running' || thinking.durationSec <= 0) return;
+    const wait = window.setTimeout(() => setThinkRun('done'), thinking.durationSec * 1000);
+    return () => window.clearTimeout(wait);
+  }, [appMode, thinkRun, thinking.durationSec, thinkStartedAt]);
 
   // Fit the canvas buffer to the card slot so on-screen dots and exports match.
   useEffect(() => {
@@ -183,6 +204,27 @@ export default function App() {
     });
   }, []);
 
+  const patchThinking = useCallback((patch: Partial<ThinkingSettings>) => {
+    setThinking((s) => ({ ...s, ...patch }));
+  }, []);
+
+  const setSurface = (mode: 'audio' | 'thinking') => {
+    if (mode === 'thinking' && recState === 'recording') pause();
+    setAppMode(mode);
+    setElapsedMs(mode === 'thinking' && thinkRun === 'running' ? performance.now() - thinkStartedAt : 0);
+  };
+
+  const submitThinking = () => {
+    if (thinkRun === 'running') {
+      setThinkRun('done');
+      return;
+    }
+    setThinkSeed((n) => n + 1);
+    setThinkStartedAt(performance.now());
+    setElapsedMs(0);
+    setThinkRun('running');
+  };
+
   const patchAudio = useCallback(
     (patch: Partial<AnalyzerParams>) => {
       setAudio((a) => {
@@ -194,10 +236,11 @@ export default function App() {
     [analyzer],
   );
 
+  const cardWidth = appMode === 'thinking' ? thinking.width : settings.width;
   const renderWidth =
     fitWidth != null
-      ? Math.max(MIN_FIT_WIDTH, Math.min(settings.width, fitWidth))
-      : settings.width;
+      ? Math.max(MIN_FIT_WIDTH, Math.min(cardWidth, fitWidth))
+      : cardWidth;
 
   // The card overrides the waveform color by state: muted center line when
   // idle, the configured active color while recording, dark when paused.
@@ -212,19 +255,28 @@ export default function App() {
           : settings.activeColor,
   };
 
+  const displayThinking: ThinkingSettings = {
+    ...thinking,
+    width: renderWidth,
+  };
+
   const panel = (
     <ControlPanel
+      appMode={appMode}
+      onAppMode={setSurface}
       settings={settings}
       onSettings={patchSettings}
       audio={audio}
       onAudio={patchAudio}
+      thinking={thinking}
+      onThinking={patchThinking}
     />
   );
 
   return (
     <div
       className="app"
-      style={{ ['--recorder-max-width' as string]: `${settings.width}px` }}
+      style={{ ['--recorder-max-width' as string]: `${cardWidth}px` }}
     >
       <button
         type="button"
@@ -238,7 +290,7 @@ export default function App() {
       </button>
       <main className="stage">
         <header>
-          <h1>Speech Dot Grid</h1>
+          <h1>{appMode === 'thinking' ? 'Thinking Grid' : 'Speech Dot Grid'}</h1>
         </header>
         {error && (
           <p className="error" role="alert">
@@ -247,19 +299,33 @@ export default function App() {
         )}
         <div className="product-stage">
           <RecorderCard
+            surface={appMode}
             state={recState}
             elapsedMs={elapsedMs}
             onRecord={record}
             onPause={pause}
             onResume={resume}
             vizRef={vizSlotRef}
+            thinkingRun={thinkRun}
+            thinkingLoop={thinking.durationSec <= 0}
+            onSubmit={appMode === 'thinking' ? submitThinking : undefined}
           >
-            <DotGridVisualizer
-              analyzer={analyzer}
-              settings={displaySettings}
-              paused={recState !== 'recording'}
-              exportRef={exportRef}
-            />
+            {appMode === 'thinking' ? (
+              <ThinkingGridVisualizer
+                settings={displayThinking}
+                run={thinkRun}
+                runStartedAt={thinkStartedAt}
+                seed={thinkSeed}
+                exportRef={exportRef}
+              />
+            ) : (
+              <DotGridVisualizer
+                analyzer={analyzer}
+                settings={displaySettings}
+                paused={recState !== 'recording'}
+                exportRef={exportRef}
+              />
+            )}
           </RecorderCard>
         </div>
         <div className="button-row">
