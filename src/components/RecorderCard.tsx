@@ -1,8 +1,11 @@
 import { useLayoutEffect, useRef, type ReactNode, type Ref } from 'react';
+import type { ThinkingRun } from '../thinking/types';
 
 export type RecorderState = 'idle' | 'recording' | 'paused';
+export type CardSurface = 'audio' | 'thinking';
 
 interface Props {
+  surface?: CardSurface;
   state: RecorderState;
   elapsedMs: number;
   onRecord: () => void;
@@ -11,6 +14,9 @@ interface Props {
   children: ReactNode;
   /** Observed by App to fit the canvas to the available card width */
   vizRef?: Ref<HTMLDivElement>;
+  thinkingRun?: ThinkingRun;
+  thinkingLoop?: boolean;
+  onSubmit?: () => void;
 }
 
 function RecordIcon() {
@@ -49,6 +55,7 @@ function formatTime(ms: number): string {
 }
 
 export function RecorderCard({
+  surface = 'audio',
   state,
   elapsedMs,
   onRecord,
@@ -56,6 +63,9 @@ export function RecorderCard({
   onResume,
   children,
   vizRef,
+  thinkingRun = 'idle',
+  thinkingLoop = false,
+  onSubmit,
 }: Props) {
   const recButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -75,15 +85,18 @@ export function RecorderCard({
     el.style.width = prevWidth;
     void el.offsetWidth; // commit the starting width so the transition runs
     el.style.width = `${target}px`;
-  }, [state]);
+  }, [state, thinkingRun, surface]);
 
+  const thinking = surface === 'thinking';
   const rec = {
     idle: { label: 'Record', icon: <RecordIcon />, variant: 'filled', onClick: onRecord },
     recording: { label: 'Pause', icon: <PauseIcon />, variant: 'outlined', onClick: onPause },
     paused: { label: 'Resume', icon: <RecordIcon />, variant: 'filled', onClick: onResume },
   }[state];
 
-  const primary = (
+  const primary = thinking ? (
+    <span className="rec-button-spacer" aria-hidden="true" />
+  ) : (
     <button
       ref={recButtonRef}
       type="button"
@@ -96,8 +109,23 @@ export function RecorderCard({
   );
 
   const timerLabel = formatTime(elapsedMs);
-  const stateLabel =
-    state === 'recording' ? 'Recording' : state === 'paused' ? 'Paused' : 'Idle';
+  const stateLabel = thinking
+    ? thinkingRun === 'running'
+      ? thinkingLoop
+        ? 'Thinking, looping'
+        : 'Thinking'
+      : thinkingRun === 'done'
+        ? 'Answered'
+        : 'Idle'
+    : state === 'recording'
+      ? 'Recording'
+      : state === 'paused'
+        ? 'Paused'
+        : 'Idle';
+  const timerText = thinking && thinkingLoop && thinkingRun === 'running' ? 'Loop' : timerLabel;
+  const timerActive = thinking ? thinkingRun !== 'idle' : state !== 'idle';
+  const submitLabel = thinking && thinkingRun === 'running' ? 'Settle' : 'Submit';
+  const submitDisabled = thinking ? false : state === 'idle';
 
   return (
     <div className="recorder-card">
@@ -107,15 +135,20 @@ export function RecorderCard({
       <div className="recorder-controls">
         {primary}
         <span
-          className={`recorder-timer ${state !== 'idle' ? 'active' : ''}`}
+          className={`recorder-timer ${timerActive ? 'active' : ''}`}
           aria-live="polite"
           aria-atomic="true"
         >
           <span className="sr-only">{stateLabel}, </span>
-          {timerLabel}
+          {timerText}
         </span>
-        <button className="submit-button" disabled={state === 'idle'} type="button">
-          Submit <SubmitIcon />
+        <button
+          className="submit-button"
+          disabled={submitDisabled}
+          type="button"
+          onClick={onSubmit}
+        >
+          {submitLabel} <SubmitIcon />
         </button>
       </div>
     </div>

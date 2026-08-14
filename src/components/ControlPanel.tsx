@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { TransitionStyle, VisualizerMode, VisualizerSettings } from './DotGridVisualizer';
 import type { AnalyzerParams } from '../audio/speechAnalyzer';
+import {
+  DEFAULT_THINKING,
+  PACKINGS,
+  THINK_PATTERNS,
+  type ThinkingSettings,
+} from '../thinking/types';
 
 const MODES: { value: VisualizerMode; label: string }[] = [
   { value: 'chronological', label: 'Chronological' },
@@ -70,10 +76,14 @@ function NumberField({
 }
 
 interface Props {
+  appMode: 'audio' | 'thinking';
+  onAppMode: (mode: 'audio' | 'thinking') => void;
   settings: VisualizerSettings;
   onSettings: (patch: Partial<VisualizerSettings>) => void;
   audio: AnalyzerParams;
   onAudio: (patch: Partial<AnalyzerParams>) => void;
+  thinking: ThinkingSettings;
+  onThinking: (patch: Partial<ThinkingSettings>) => void;
 }
 
 function Slider({
@@ -166,10 +176,230 @@ function Segmented<T extends string>({
   );
 }
 
-export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
+export function ControlPanel({
+  appMode,
+  onAppMode,
+  settings,
+  onSettings,
+  audio,
+  onAudio,
+  thinking,
+  onThinking,
+}: Props) {
   const speed = SPEED_CONTROL[settings.mode];
   return (
     <aside className="panel">
+      <section>
+        <h2>Function</h2>
+        <Segmented
+          label="Surface"
+          value={appMode}
+          options={[
+            { value: 'audio', label: 'Audio' },
+            { value: 'thinking', label: 'Thinking' },
+          ]}
+          onChange={onAppMode}
+        />
+      </section>
+      {appMode === 'thinking' ? (
+        <ThinkingControls thinking={thinking} onThinking={onThinking} />
+      ) : (
+        <AudioControls
+          settings={settings}
+          onSettings={onSettings}
+          audio={audio}
+          onAudio={onAudio}
+          speed={speed}
+        />
+      )}
+    </aside>
+  );
+}
+
+function ThinkingControls({
+  thinking,
+  onThinking,
+}: {
+  thinking: ThinkingSettings;
+  onThinking: (patch: Partial<ThinkingSettings>) => void;
+}) {
+  return (
+    <>
+      <section>
+        <h2>Field</h2>
+        <Slider
+          label="Agents"
+          value={thinking.count}
+          min={4}
+          max={400}
+          onChange={(count) => onThinking({ count })}
+        />
+        <div className="control">
+          <span className="control-label">Packing</span>
+          <div className="mode-grid">
+            {PACKINGS.map((p) => (
+              <button
+                key={p.value}
+                className={p.value === thinking.packing ? 'active' : ''}
+                onClick={() => onThinking({ packing: p.value })}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Slider
+          label="Max width"
+          value={thinking.width}
+          min={240}
+          max={1400}
+          step={10}
+          editable
+          onChange={(width) => onThinking({ width })}
+        />
+        <Slider
+          label="Height"
+          value={thinking.height}
+          min={80}
+          max={800}
+          step={1}
+          editable
+          onChange={(height) => onThinking({ height })}
+        />
+        <Slider
+          label="Dot size"
+          value={thinking.dotScale}
+          min={0.15}
+          max={1}
+          step={0.01}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(dotScale) => onThinking({ dotScale })}
+        />
+      </section>
+
+      <section>
+        <h2>Thinking</h2>
+        <div className="control">
+          <span className="control-label">Pattern</span>
+          <div className="mode-grid">
+            {THINK_PATTERNS.map((p) => (
+              <button
+                key={p.value}
+                className={p.value === thinking.pattern ? 'active' : ''}
+                onClick={() => onThinking({ pattern: p.value })}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Slider
+          label="Speed"
+          value={thinking.speed}
+          min={0.25}
+          max={3}
+          step={0.05}
+          format={(v) => `${v.toFixed(2)}\u00d7`}
+          onChange={(speed) => onThinking({ speed })}
+        />
+        <Segmented
+          label="Duration"
+          value={thinking.durationSec === 0 ? 'loop' : 'timed'}
+          options={[
+            { value: 'timed', label: 'Timed' },
+            { value: 'loop', label: 'Loop' },
+          ]}
+          onChange={(v) =>
+            onThinking({
+              durationSec: v === 'loop' ? 0 : thinking.durationSec || DEFAULT_THINKING.durationSec,
+            })
+          }
+        />
+        {thinking.durationSec > 0 && (
+          <Slider
+            label="Think for"
+            value={thinking.durationSec}
+            min={2}
+            max={30}
+            step={1}
+            format={(v) => `${v} s`}
+            onChange={(durationSec) => onThinking({ durationSec })}
+          />
+        )}
+        <Segmented
+          label="Final answer"
+          value={thinking.answerStyle}
+          options={[
+            { value: 'binary', label: 'On / off' },
+            { value: 'analog', label: 'Opacity' },
+          ]}
+          onChange={(answerStyle) => onThinking({ answerStyle })}
+        />
+      </section>
+
+      <section>
+        <h2>Color</h2>
+        <Slider
+          label="Colors used"
+          value={thinking.colorCount}
+          min={1}
+          max={3}
+          onChange={(colorCount) => onThinking({ colorCount })}
+        />
+        <Segmented
+          label="Blend"
+          value={thinking.gradient ? 'gradient' : 'steps'}
+          options={[
+            { value: 'gradient', label: 'Gradient' },
+            { value: 'steps', label: 'Steps' },
+          ]}
+          onChange={(v) => onThinking({ gradient: v === 'gradient' })}
+        />
+        <ColorInput label="Color A" value={thinking.colorA} onChange={(colorA) => onThinking({ colorA })} />
+        {thinking.colorCount >= 2 && (
+          <ColorInput label="Color B" value={thinking.colorB} onChange={(colorB) => onThinking({ colorB })} />
+        )}
+        {thinking.colorCount >= 3 && (
+          <ColorInput label="Color C" value={thinking.colorC} onChange={(colorC) => onThinking({ colorC })} />
+        )}
+        <Slider
+          label="Min opacity"
+          value={thinking.opacityMin}
+          min={0}
+          max={1}
+          step={0.01}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(opacityMin) => onThinking({ opacityMin: Math.min(opacityMin, thinking.opacityMax) })}
+        />
+        <Slider
+          label="Max opacity"
+          value={thinking.opacityMax}
+          min={0}
+          max={1}
+          step={0.01}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(opacityMax) => onThinking({ opacityMax: Math.max(opacityMax, thinking.opacityMin) })}
+        />
+      </section>
+    </>
+  );
+}
+
+function AudioControls({
+  settings,
+  onSettings,
+  audio,
+  onAudio,
+  speed,
+}: {
+  settings: VisualizerSettings;
+  onSettings: (patch: Partial<VisualizerSettings>) => void;
+  audio: AnalyzerParams;
+  onAudio: (patch: Partial<AnalyzerParams>) => void;
+  speed: { label: string; unit: string } | undefined;
+}) {
+  return (
+    <>
       <section>
         <h2>Mode</h2>
         <div className="control">
@@ -414,6 +644,6 @@ export function ControlPanel({ settings, onSettings, audio, onAudio }: Props) {
           onChange={(gain) => onAudio({ gain })}
         />
       </section>
-    </aside>
+    </>
   );
 }

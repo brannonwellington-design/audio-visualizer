@@ -127,6 +127,12 @@
   cursor: pointer;
 }
 
+.rec-button-spacer {
+  display: block;
+  width: 1px;
+  height: 32px;
+}
+
 .rec-button {
   justify-content: center;
   white-space: nowrap;
