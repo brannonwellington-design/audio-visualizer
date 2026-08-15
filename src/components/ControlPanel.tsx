@@ -303,7 +303,7 @@ function ThinkingControls({
         </button>
         <div className="control">
           <span className="control-label">Pattern</span>
-          <div className="mode-grid">
+          <div className="mode-grid pattern-grid">
             {THINK_PATTERNS.map((p) => (
               <button
                 key={p.value}

@@ -369,6 +369,15 @@
   color: var(--content-brand-contrast);
 }
 
+.pattern-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.pattern-grid button {
+  font-size: 11px;
+  padding: 6px 2px;
+}
+
 .think-run-button {
   font: inherit;
   font-size: 14px;

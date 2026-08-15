@@ -12,7 +12,19 @@ export type ThinkPattern =
   | 'mesh'
   | 'converge'
   | 'glitch'
-  | 'beacon';
+  | 'beacon'
+  | 'weave'
+  | 'breath'
+  | 'synapse'
+  | 'constellation'
+  | 'solve'
+  | 'listen'
+  | 'gyre'
+  | 'stream'
+  | 'shape'
+  | 'helix'
+  | 'comet'
+  | 'bloom';
 export type PatternChoice = ThinkPattern | 'cycle';
 export type AnswerStyle = 'binary' | 'analog';
 export type ThinkingRun = 'idle' | 'running' | 'done';
@@ -74,6 +86,18 @@ export const THINK_PATTERNS: { value: PatternChoice; label: string }[] = [
   { value: 'drift', label: 'Drift' },
   { value: 'glitch', label: 'Glitch' },
   { value: 'twinkle', label: 'Twinkle' },
+  { value: 'weave', label: 'Weave' },
+  { value: 'breath', label: 'Breath' },
+  { value: 'synapse', label: 'Synapse' },
+  { value: 'constellation', label: 'Stars' },
+  { value: 'solve', label: 'Solve' },
+  { value: 'listen', label: 'Listen' },
+  { value: 'gyre', label: 'Gyre' },
+  { value: 'stream', label: 'Stream' },
+  { value: 'shape', label: 'Shape' },
+  { value: 'helix', label: 'Helix' },
+  { value: 'comet', label: 'Comet' },
+  { value: 'bloom', label: 'Bloom' },
 ];
 
 export const PACKINGS: { value: PackingKind; label: string }[] = [

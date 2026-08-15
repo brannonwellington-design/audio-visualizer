@@ -3,17 +3,29 @@ import type { ThinkPattern } from './types';
 
 const CYCLE_ORDER: ThinkPattern[] = [
   'scan',
+  'stream',
   'spiral',
+  'weave',
   'ripple',
+  'breath',
   'cascade',
+  'synapse',
   'checker',
+  'constellation',
   'mesh',
+  'solve',
   'rain',
+  'listen',
   'converge',
+  'gyre',
   'pulse',
+  'shape',
   'beacon',
+  'helix',
   'drift',
+  'comet',
   'glitch',
+  'bloom',
   'twinkle',
 ];
 
@@ -30,6 +42,47 @@ function hash01(i: number, salt = 0): number {
 
 function wave01(x: number) {
   return 0.5 + 0.5 * Math.sin(x);
+}
+
+function clamp01(x: number) {
+  return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function smoothstep(e0: number, e1: number, x: number) {
+  const t = clamp01((x - e0) / Math.max(1e-6, e1 - e0));
+  return t * t * (3 - 2 * t);
+}
+
+function gauss(x: number, sigma: number) {
+  const s = Math.max(1e-4, sigma);
+  return Math.exp((-0.5 * x * x) / (s * s));
+}
+
+function wrapDelta(a: number, b: number) {
+  let d = a - b;
+  if (d > 0.5) d -= 1;
+  if (d < -0.5) d += 1;
+  return d;
+}
+
+function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const vx = bx - ax;
+  const vy = by - ay;
+  const c2 = vx * vx + vy * vy;
+  const k = c2 > 1e-8 ? clamp01(((px - ax) * vx + (py - ay) * vy) / c2) : 0;
+  return Math.hypot(px - ax - k * vx, py - ay - k * vy);
+}
+
+/** Polar radius of a regular n-gon; n=0 is a circle. */
+function polarRadius(ang: number, n: number, r: number) {
+  if (n < 3) return r;
+  const step = (Math.PI * 2) / n;
+  const a = ang - step * Math.floor(ang / step) - step * 0.5;
+  return r / Math.max(0.2, Math.cos(a));
 }
 
 /** 0..1 activity for one agent in the unified field. */
@@ -119,6 +172,120 @@ export function agentActivity(
       const beam = Math.pow(Math.max(0, Math.cos(da)), 16);
       const d = Math.hypot(agent.u - 0.5, agent.v - 0.5);
       return 0.08 + 0.92 * beam * (0.25 + 0.75 * d);
+    }
+    case 'weave': {
+      const s0 = gauss(agent.v - (0.5 + 0.26 * Math.sin(agent.u * 9.2 + t * 2.15)), 0.045);
+      const s1 = gauss(agent.v - (0.5 + 0.26 * Math.sin(agent.u * 9.2 + t * 2.15 + 2.094)), 0.045);
+      const s2 = gauss(agent.v - (0.5 + 0.26 * Math.sin(agent.u * 9.2 + t * 2.15 + 4.189)), 0.045);
+      return 0.08 + 0.92 * Math.max(s0, s1, s2);
+    }
+    case 'breath': {
+      const d = Math.hypot(agent.u - 0.5, agent.v - 0.5);
+      const inhale = 0.5 + 0.5 * Math.sin(t * 1.05);
+      const chest = 1 - d * 0.72;
+      return 0.12 + 0.88 * (0.22 + 0.78 * inhale) * Math.max(0.15, chest);
+    }
+    case 'synapse': {
+      const hops = 5;
+      const chain = Math.floor(t * 5.4);
+      const local = fract(t * 5.4);
+      const h0 = Math.min(hops - 1, Math.floor(local * hops));
+      const h1 = Math.min(hops - 1, h0 + 1);
+      const f = fract(local * hops);
+      const aU = 0.1 + 0.8 * hash01(chain, seed + h0 * 3);
+      const aV = 0.1 + 0.8 * hash01(chain, seed + h0 * 3 + 1);
+      const bU = 0.1 + 0.8 * hash01(chain, seed + h1 * 3);
+      const bV = 0.1 + 0.8 * hash01(chain, seed + h1 * 3 + 1);
+      const bolt = gauss(distToSeg(agent.u, agent.v, aU, aV, bU, bV), 0.028);
+      const head = gauss(Math.hypot(agent.u - bU, agent.v - bV), 0.05) * (0.4 + 0.6 * f);
+      return 0.08 + 0.92 * Math.max(bolt * (1 - f * 0.55), head);
+    }
+    case 'constellation': {
+      const clusters = 5;
+      const lit = Math.floor(t * 0.65 + seed * 0.01) % clusters;
+      const nxt = (lit + 1) % clusters;
+      const cU = 0.12 + 0.76 * hash01(lit, seed + 2);
+      const cV = 0.14 + 0.72 * hash01(lit, seed + 5);
+      const nU = 0.12 + 0.76 * hash01(nxt, seed + 2);
+      const nV = 0.14 + 0.72 * hash01(nxt, seed + 5);
+      const node = gauss(Math.hypot(agent.u - cU, agent.v - cV), 0.09);
+      const neighbor = gauss(Math.hypot(agent.u - nU, agent.v - nV), 0.07) * 0.55;
+      const wire = gauss(distToSeg(agent.u, agent.v, cU, cV, nU, nV), 0.03) * 0.7;
+      return 0.08 + 0.92 * Math.max(node, neighbor, wire);
+    }
+    case 'solve': {
+      const cycle = fract(t * 0.2);
+      let mix = 0;
+      if (cycle < 0.32) mix = 0;
+      else if (cycle < 0.42) mix = smoothstep(0.32, 0.42, cycle);
+      else if (cycle < 0.72) mix = 1;
+      else if (cycle < 0.82) mix = 1 - smoothstep(0.72, 0.82, cycle);
+      const chaos = hash01(agent.i, Math.floor(t * 9) + seed);
+      const plus =
+        Math.min(Math.abs(agent.u - 0.5), Math.abs(agent.v - 0.5)) < 0.07 &&
+        Math.max(Math.abs(agent.u - 0.5), Math.abs(agent.v - 0.5)) < 0.34
+          ? 1
+          : 0.08;
+      return lerp(0.08 + 0.92 * chaos, plus, mix);
+    }
+    case 'listen': {
+      const amp = 0.18 + 0.16 * (0.5 + 0.5 * Math.sin(t * 1.35 + agent.u * 2.2));
+      const y = 0.5 + amp * Math.sin(agent.u * 16 - t * 5.1);
+      return 0.08 + 0.92 * gauss(agent.v - y, 0.04);
+    }
+    case 'gyre': {
+      const x = (agent.u - 0.5) / 0.92;
+      const y = (agent.v - 0.5) / 0.58;
+      const d = Math.hypot(x, y);
+      const ang = Math.atan2(y, x);
+      const ring = Math.round(d * 5.2);
+      const dir = ring % 2 === 0 ? 1 : -1;
+      const bead = Math.pow(Math.max(0, Math.cos(ang * (2 + (ring % 3)) + t * dir * (1.1 + ring * 0.22))), 10);
+      const onRing = gauss(d - ring / 5.2, 0.045);
+      return 0.08 + 0.92 * onRing * (0.18 + 0.82 * bead);
+    }
+    case 'stream': {
+      const order = agent.v * 0.1 + agent.u * 0.9;
+      const head = fract(t * 0.26);
+      const delta = wrapDelta(order, head);
+      const cursor = gauss(delta, 0.028);
+      const trail = delta < 0 && delta > -0.28 ? 0.42 * (1 + delta / 0.28) : 0;
+      return 0.08 + 0.92 * Math.max(cursor, trail);
+    }
+    case 'shape': {
+      const ang = Math.atan2(agent.v - 0.5, agent.u - 0.5);
+      const d = Math.hypot(agent.u - 0.5, agent.v - 0.5);
+      const morph = t * 0.16;
+      const a = Math.floor(morph) % 3;
+      const f = smoothstep(0.18, 0.82, morph % 1);
+      const sides = [0, 3, 4];
+      const r = lerp(polarRadius(ang, sides[a], 0.3), polarRadius(ang, sides[(a + 1) % 3], 0.3), f);
+      return 0.08 + 0.92 * gauss(d - r, 0.028);
+    }
+    case 'helix': {
+      const y1 = 0.5 + 0.26 * Math.sin(agent.u * Math.PI * 4 + t * 2.3);
+      const y2 = 0.5 + 0.26 * Math.sin(agent.u * Math.PI * 4 + t * 2.3 + Math.PI);
+      const front = 0.5 + 0.5 * Math.cos(agent.u * Math.PI * 4 + t * 2.3);
+      const a = gauss(agent.v - y1, 0.04) * (0.4 + 0.6 * front);
+      const b = gauss(agent.v - y2, 0.04) * (0.4 + 0.6 * (1 - front));
+      return 0.08 + 0.92 * Math.max(a, b);
+    }
+    case 'comet': {
+      const pathU = fract(t * 0.17);
+      const pathV = 0.5 + 0.3 * Math.sin(pathU * Math.PI * 3 + seed * 0.4);
+      const du = wrapDelta(agent.u, pathU);
+      const dv = agent.v - pathV;
+      const head = Math.exp(-(du * du * 240 + dv * dv * 90));
+      const tail = du < 0 && du > -0.24 ? Math.exp(-dv * dv * 70) * (1 + du / 0.24) * 0.75 : 0;
+      return 0.08 + 0.92 * Math.max(head, tail);
+    }
+    case 'bloom': {
+      const ang = Math.atan2(agent.v - 0.5, agent.u - 0.5);
+      const d = Math.hypot(agent.u - 0.5, agent.v - 0.5);
+      const open = 0.5 + 0.5 * Math.sin(t * 1.15);
+      const petal = 0.5 + 0.5 * Math.cos(ang * 6);
+      const r = 0.1 + 0.3 * open * (0.35 + 0.65 * petal);
+      return 0.08 + 0.92 * gauss(d - r, 0.032);
     }
   }
 }
