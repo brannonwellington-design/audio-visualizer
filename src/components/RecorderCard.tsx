@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode, type Ref } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import type { ThinkingRun } from '../thinking/types';
 
 export type RecorderState = 'idle' | 'recording' | 'paused';
@@ -7,7 +7,10 @@ export type CardSurface = 'audio' | 'thinking';
 interface Props {
   surface?: CardSurface;
   state: RecorderState;
+  /** Frozen elapsed time while the clock is not running. */
   elapsedMs: number;
+  elapsedRunning?: boolean;
+  elapsedStartedAt?: number;
   onRecord: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -54,10 +57,43 @@ function formatTime(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+/** Ticks locally so App (and the settings drawer) do not re-render every 200ms. */
+function ElapsedClock({
+  running,
+  startedAt,
+  baseMs,
+  loop,
+}: {
+  running: boolean;
+  startedAt: number;
+  baseMs: number;
+  loop?: boolean;
+}) {
+  const [ms, setMs] = useState(() =>
+    running ? baseMs + Math.max(0, performance.now() - startedAt) : baseMs,
+  );
+
+  useEffect(() => {
+    if (!running) {
+      setMs(baseMs);
+      return;
+    }
+    const tick = () => setMs(baseMs + Math.max(0, performance.now() - startedAt));
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => window.clearInterval(id);
+  }, [running, startedAt, baseMs]);
+
+  if (loop && running) return <>Loop</>;
+  return <>{formatTime(ms)}</>;
+}
+
 export function RecorderCard({
   surface = 'audio',
   state,
   elapsedMs,
+  elapsedRunning = false,
+  elapsedStartedAt = 0,
   onRecord,
   onPause,
   onResume,
@@ -108,7 +144,6 @@ export function RecorderCard({
     </button>
   );
 
-  const timerLabel = formatTime(elapsedMs);
   const stateLabel = thinking
     ? thinkingRun === 'running'
       ? thinkingLoop
@@ -122,7 +157,6 @@ export function RecorderCard({
       : state === 'paused'
         ? 'Paused'
         : 'Idle';
-  const timerText = thinking && thinkingLoop && thinkingRun === 'running' ? 'Loop' : timerLabel;
   const timerActive = thinking ? thinkingRun !== 'idle' : state !== 'idle';
   const submitLabel = thinking && thinkingRun === 'running' ? 'Settle' : 'Submit';
   const submitDisabled = thinking ? false : state === 'idle';
@@ -140,7 +174,12 @@ export function RecorderCard({
           aria-atomic="true"
         >
           <span className="sr-only">{stateLabel}, </span>
-          {timerText}
+          <ElapsedClock
+            running={elapsedRunning}
+            startedAt={elapsedStartedAt}
+            baseMs={elapsedMs}
+            loop={thinking && thinkingLoop}
+          />
         </span>
         <button
           className="submit-button"

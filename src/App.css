@@ -56,6 +56,7 @@
 .secondary-button:focus-visible,
 .rec-button:focus-visible,
 .submit-button:focus-visible,
+.think-run-button:focus-visible,
 .settings-fab:focus-visible,
 .drawer-close:focus-visible,
 .segmented button:focus-visible,
@@ -368,6 +369,24 @@
   color: var(--content-brand-contrast);
 }
 
+.think-run-button {
+  font: inherit;
+  font-size: 14px;
+  width: 100%;
+  height: 36px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--surface-inverse-primary);
+  background: var(--surface-inverse-primary);
+  color: var(--content-inverse-primary);
+  cursor: pointer;
+}
+
+.think-run-button.settle {
+  background: transparent;
+  color: var(--content-primary);
+}
+
 /* --- Mobile settings drawer --- */
 
 .settings-fab {
@@ -403,16 +422,17 @@
 }
 
 .drawer-layer.open {
-  pointer-events: auto;
   visibility: visible;
   transition: visibility 0s;
 }
 
 /* Transparent on purpose: the visualizer must stay fully visible while
-   settings are adjusted. Tapping outside the sheet still closes it. */
+   settings are adjusted. The layer stays pointer-events: none so Start
+   and Settle on the card still work with the drawer open. */
 .drawer-scrim {
   position: absolute;
   inset: 0;
+  pointer-events: none;
 }
 
 .drawer {
@@ -430,6 +450,7 @@
   box-shadow: 0 -8px 24px rgba(18, 15, 8, 0.12);
   transform: translateY(100%);
   transition: transform 0.28s ease;
+  pointer-events: auto;
 }
 
 .drawer-layer.open .drawer {

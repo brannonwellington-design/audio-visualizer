@@ -1,5 +1,18 @@
 export type PackingKind = 'lattice' | 'hex' | 'tight';
-export type ThinkPattern = 'scan' | 'ripple' | 'checker' | 'rain' | 'pulse' | 'drift' | 'twinkle';
+export type ThinkPattern =
+  | 'scan'
+  | 'ripple'
+  | 'checker'
+  | 'rain'
+  | 'pulse'
+  | 'drift'
+  | 'twinkle'
+  | 'spiral'
+  | 'cascade'
+  | 'mesh'
+  | 'converge'
+  | 'glitch'
+  | 'beacon';
 export type PatternChoice = ThinkPattern | 'cycle';
 export type AnswerStyle = 'binary' | 'analog';
 export type ThinkingRun = 'idle' | 'running' | 'done';
@@ -49,11 +62,17 @@ export const DEFAULT_THINKING: ThinkingSettings = {
 export const THINK_PATTERNS: { value: PatternChoice; label: string }[] = [
   { value: 'cycle', label: 'Cycle' },
   { value: 'scan', label: 'Scan' },
+  { value: 'spiral', label: 'Spiral' },
   { value: 'ripple', label: 'Ripple' },
+  { value: 'cascade', label: 'Cascade' },
   { value: 'checker', label: 'Checker' },
+  { value: 'mesh', label: 'Mesh' },
   { value: 'rain', label: 'Rain' },
+  { value: 'converge', label: 'Converge' },
   { value: 'pulse', label: 'Pulse' },
+  { value: 'beacon', label: 'Beacon' },
   { value: 'drift', label: 'Drift' },
+  { value: 'glitch', label: 'Glitch' },
   { value: 'twinkle', label: 'Twinkle' },
 ];
 
