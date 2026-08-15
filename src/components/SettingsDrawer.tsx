@@ -22,17 +22,22 @@ function CloseIcon() {
 /**
  * Half-height bottom sheet for mobile. Deliberately has no dimming
  * backdrop so the visualizer stays fully visible while settings are
- * adjusted; a transparent scrim still closes it on outside tap.
+ * adjusted. Clicks on the card pass through so Start/Settle can run
+ * with the drawer open; close via the X, Escape, or swipe down.
  */
 export function SettingsDrawer({ open, onClose, children }: Props) {
   const drawerRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const dragStartY = useRef<number | null>(null);
   const dragDelta = useRef(0);
+  onCloseRef.current = onClose;
 
+  // Only run when `open` flips. Do not depend on `onClose` — a new
+  // callback every parent render would steal focus from the color picker.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', onKey);
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -42,7 +47,7 @@ export function SettingsDrawer({ open, onClose, children }: Props) {
       window.removeEventListener('keydown', onKey);
       previouslyFocused?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   // Swipe-down on the header follows the finger, then closes past a
   // threshold or snaps back.
@@ -67,14 +72,14 @@ export function SettingsDrawer({ open, onClose, children }: Props) {
       el.style.transition = '';
       el.style.transform = '';
     }
-    if (dragDelta.current > 70) onClose();
+    if (dragDelta.current > 70) onCloseRef.current();
     dragStartY.current = null;
     dragDelta.current = 0;
   };
 
   return (
     <div className={`drawer-layer ${open ? 'open' : ''}`} aria-hidden={!open} inert={!open}>
-      <div className="drawer-scrim" onClick={onClose} />
+      <div className="drawer-scrim" />
       <div
         className="drawer"
         ref={drawerRef}

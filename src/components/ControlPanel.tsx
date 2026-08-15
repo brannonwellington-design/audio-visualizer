@@ -5,6 +5,7 @@ import {
   DEFAULT_THINKING,
   PACKINGS,
   THINK_PATTERNS,
+  type ThinkingRun,
   type ThinkingSettings,
 } from '../thinking/types';
 
@@ -84,6 +85,8 @@ interface Props {
   onAudio: (patch: Partial<AnalyzerParams>) => void;
   thinking: ThinkingSettings;
   onThinking: (patch: Partial<ThinkingSettings>) => void;
+  thinkingRun: ThinkingRun;
+  onThinkingRun: () => void;
 }
 
 function Slider({
@@ -185,6 +188,8 @@ export function ControlPanel({
   onAudio,
   thinking,
   onThinking,
+  thinkingRun,
+  onThinkingRun,
 }: Props) {
   const speed = SPEED_CONTROL[settings.mode];
   return (
@@ -202,7 +207,12 @@ export function ControlPanel({
         />
       </section>
       {appMode === 'thinking' ? (
-        <ThinkingControls thinking={thinking} onThinking={onThinking} />
+        <ThinkingControls
+          thinking={thinking}
+          onThinking={onThinking}
+          thinkingRun={thinkingRun}
+          onThinkingRun={onThinkingRun}
+        />
       ) : (
         <AudioControls
           settings={settings}
@@ -219,9 +229,13 @@ export function ControlPanel({
 function ThinkingControls({
   thinking,
   onThinking,
+  thinkingRun,
+  onThinkingRun,
 }: {
   thinking: ThinkingSettings;
   onThinking: (patch: Partial<ThinkingSettings>) => void;
+  thinkingRun: ThinkingRun;
+  onThinkingRun: () => void;
 }) {
   return (
     <>
@@ -279,6 +293,14 @@ function ThinkingControls({
 
       <section>
         <h2>Thinking</h2>
+        <button
+          type="button"
+          className={`think-run-button ${thinkingRun === 'running' ? 'settle' : ''}`}
+          onClick={onThinkingRun}
+          aria-pressed={thinkingRun === 'running'}
+        >
+          {thinkingRun === 'running' ? 'Settle' : 'Start'}
+        </button>
         <div className="control">
           <span className="control-label">Pattern</span>
           <div className="mode-grid">

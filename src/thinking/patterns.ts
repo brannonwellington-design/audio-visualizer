@@ -3,11 +3,17 @@ import type { ThinkPattern } from './types';
 
 const CYCLE_ORDER: ThinkPattern[] = [
   'scan',
+  'spiral',
   'ripple',
+  'cascade',
   'checker',
+  'mesh',
   'rain',
+  'converge',
   'pulse',
+  'beacon',
   'drift',
+  'glitch',
   'twinkle',
 ];
 
@@ -68,6 +74,51 @@ export function agentActivity(
       const p = fract(t / period + phase);
       const on = p < 0.18 + phase * 0.16;
       return on ? 1 : 0.08;
+    }
+    case 'spiral': {
+      const ang = Math.atan2(agent.v - 0.5, agent.u - 0.5);
+      const d = Math.hypot(agent.u - 0.5, agent.v - 0.5);
+      return wave01(ang * 3.2 + d * 16 - t * 3.6 + phase * 0.35);
+    }
+    case 'cascade': {
+      const rows = 9;
+      const row = Math.floor(agent.v * (rows - 0.001));
+      const head = Math.floor(fract(t * 0.85) * rows);
+      const dist = (row - head + rows) % rows;
+      if (dist === 0) return 1;
+      if (dist === 1) return 0.55 + 0.15 * phase;
+      if (dist === 2) return 0.22;
+      return 0.08 + phase * 0.04;
+    }
+    case 'mesh': {
+      const a = Math.sin((agent.u + agent.v) * 14 - t * 3.1);
+      const b = Math.sin((agent.u - agent.v) * 14 + t * 2.2);
+      return 0.1 + 0.9 * (0.5 + 0.5 * a * b);
+    }
+    case 'converge': {
+      const d = Math.hypot(agent.u - 0.5, agent.v - 0.5);
+      const radius = 0.08 + 0.64 * (0.5 + 0.5 * Math.cos(t * 1.45));
+      const band = Math.exp(-Math.pow((d - radius) * 11, 2));
+      return 0.08 + 0.92 * band;
+    }
+    case 'glitch': {
+      const slice = Math.floor(agent.v * 16);
+      const col = Math.floor(agent.u * 20);
+      const tCell = Math.floor(t * 7.5);
+      const g = hash01(slice * 31 + col, tCell + seed);
+      const scan = hash01(slice, tCell + seed);
+      if (scan > 0.9) return 0.12 + 0.88 * hash01(col, tCell + 9);
+      if (g > 0.84) return 1;
+      if (g > 0.72) return 0.22;
+      return 0.08;
+    }
+    case 'beacon': {
+      const ang = Math.atan2(agent.v - 0.5, agent.u - 0.5);
+      let da = ang - t * 1.4;
+      da = da - Math.PI * 2 * Math.floor((da + Math.PI) / (Math.PI * 2));
+      const beam = Math.pow(Math.max(0, Math.cos(da)), 16);
+      const d = Math.hypot(agent.u - 0.5, agent.v - 0.5);
+      return 0.08 + 0.92 * beam * (0.25 + 0.75 * d);
     }
   }
 }

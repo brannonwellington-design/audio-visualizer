@@ -73,38 +73,29 @@ export default function App() {
   const [audio, setAudio] = useState<AnalyzerParams>({ ...analyzer.params });
   const [recState, setRecState] = useState<RecorderState>('idle');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(0);
+  /** Frozen elapsed time while a clock is not ticking (paused / idle / settled). */
+  const [elapsedBaseMs, setElapsedBaseMs] = useState(0);
+  const [clockStartedAt, setClockStartedAt] = useState(0);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fitWidth, setFitWidth] = useState<number | null>(null);
   const exportRef = useRef<VisualizerExport | null>(null);
   const vizSlotRef = useRef<HTMLDivElement>(null);
   const copiedTimerRef = useRef<number | undefined>(undefined);
-  /** Recording time accumulated before the most recent resume */
-  const accumulatedRef = useRef(0);
-  const segmentStartRef = useRef(0);
+  const thinkStartedAtRef = useRef(0);
 
-  useEffect(() => {
-    if (recState !== 'recording') return;
-    const tick = window.setInterval(() => {
-      setElapsedMs(accumulatedRef.current + (performance.now() - segmentStartRef.current));
-    }, 200);
-    return () => window.clearInterval(tick);
-  }, [recState]);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
-  useEffect(() => {
-    if (appMode !== 'thinking' || thinkRun !== 'running') return;
-    const tick = window.setInterval(() => {
-      setElapsedMs(performance.now() - thinkStartedAt);
-    }, 200);
-    return () => window.clearInterval(tick);
-  }, [appMode, thinkRun, thinkStartedAt]);
+  const settleThinking = useCallback(() => {
+    setElapsedBaseMs(Math.max(0, performance.now() - thinkStartedAtRef.current));
+    setThinkRun('done');
+  }, []);
 
   useEffect(() => {
     if (appMode !== 'thinking' || thinkRun !== 'running' || thinking.durationSec <= 0) return;
-    const wait = window.setTimeout(() => setThinkRun('done'), thinking.durationSec * 1000);
+    const wait = window.setTimeout(settleThinking, thinking.durationSec * 1000);
     return () => window.clearTimeout(wait);
-  }, [appMode, thinkRun, thinking.durationSec, thinkStartedAt]);
+  }, [appMode, thinkRun, thinking.durationSec, thinkStartedAt, settleThinking]);
 
   // Fit the canvas buffer to the card slot so on-screen dots and exports match.
   useEffect(() => {
@@ -124,9 +115,9 @@ export default function App() {
     try {
       await analyzer.start();
       analyzer.params = audio;
-      accumulatedRef.current = 0;
-      segmentStartRef.current = performance.now();
-      setElapsedMs(0);
+      const now = performance.now();
+      setElapsedBaseMs(0);
+      setClockStartedAt(now);
       setRecState('recording');
     } catch {
       setError('Microphone access was denied. Allow mic access and try again.');
@@ -134,13 +125,12 @@ export default function App() {
   };
 
   const pause = () => {
-    accumulatedRef.current += performance.now() - segmentStartRef.current;
-    setElapsedMs(accumulatedRef.current);
+    setElapsedBaseMs((base) => base + Math.max(0, performance.now() - clockStartedAt));
     setRecState('paused');
   };
 
   const resume = () => {
-    segmentStartRef.current = performance.now();
+    setClockStartedAt(performance.now());
     setRecState('recording');
   };
 
@@ -211,19 +201,20 @@ export default function App() {
   const setSurface = (mode: 'audio' | 'thinking') => {
     if (mode === 'thinking' && recState === 'recording') pause();
     setAppMode(mode);
-    setElapsedMs(mode === 'thinking' && thinkRun === 'running' ? performance.now() - thinkStartedAt : 0);
   };
 
-  const submitThinking = () => {
+  const submitThinking = useCallback(() => {
     if (thinkRun === 'running') {
-      setThinkRun('done');
+      settleThinking();
       return;
     }
+    const now = performance.now();
+    thinkStartedAtRef.current = now;
     setThinkSeed((n) => n + 1);
-    setThinkStartedAt(performance.now());
-    setElapsedMs(0);
+    setThinkStartedAt(now);
+    setElapsedBaseMs(0);
     setThinkRun('running');
-  };
+  }, [thinkRun, settleThinking]);
 
   const patchAudio = useCallback(
     (patch: Partial<AnalyzerParams>) => {
@@ -270,8 +261,13 @@ export default function App() {
       onAudio={patchAudio}
       thinking={thinking}
       onThinking={patchThinking}
+      thinkingRun={thinkRun}
+      onThinkingRun={submitThinking}
     />
   );
+
+  const elapsedRunning = appMode === 'thinking' ? thinkRun === 'running' : recState === 'recording';
+  const elapsedStartedAt = appMode === 'thinking' ? thinkStartedAt : clockStartedAt;
 
   return (
     <div
@@ -301,7 +297,9 @@ export default function App() {
           <RecorderCard
             surface={appMode}
             state={recState}
-            elapsedMs={elapsedMs}
+            elapsedMs={elapsedBaseMs}
+            elapsedRunning={elapsedRunning}
+            elapsedStartedAt={elapsedStartedAt}
             onRecord={record}
             onPause={pause}
             onResume={resume}
@@ -341,7 +339,7 @@ export default function App() {
         </div>
       </main>
       {panel}
-      <SettingsDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+      <SettingsDrawer open={drawerOpen} onClose={closeDrawer}>
         {panel}
       </SettingsDrawer>
     </div>
